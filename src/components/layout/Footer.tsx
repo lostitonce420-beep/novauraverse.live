@@ -113,6 +113,9 @@ export default function Footer() {
             <Link to="/contact" className="text-text-muted text-sm hover:text-text-secondary transition-colors">
               Contact
             </Link>
+            <Link to="/staff-login" className="text-text-muted/40 text-sm hover:text-text-muted transition-colors">
+              Staff Login
+            </Link>
           </div>
         </div>
 

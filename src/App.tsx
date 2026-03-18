@@ -84,6 +84,8 @@ import AdminAssets from '@/pages/admin/AdminAssets';
 import AdminUsers from '@/pages/admin/AdminUsers';
 import AdminOrders from '@/pages/admin/AdminOrders';
 import AdminCommandCenter from '@/pages/admin/AdminCommandCenter';
+import NovaSysPage from '@/pages/public/NovaSysPage';
+import StaffLoginPage from '@/pages/public/StaffLoginPage';
 
 // Components
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -183,6 +185,8 @@ function AppRoutes() {
                 element={isAuthenticated ? <Navigate to="/" /> : <SignupPage />} 
               />
               <Route path="/admin-setup" element={<AdminSetupPage />} />
+              <Route path="/nova-sys" element={<NovaSysPage />} />
+              <Route path="/staff-login" element={<StaffLoginPage />} />
             </Route>
 
             {/* Buyer Routes (Protected) */}

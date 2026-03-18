@@ -76,6 +76,21 @@ export default function AdminCommandCenter() {
   const { user } = useAuthStore();
   const { addToast } = useUIStore();
   const [activeTab, setActiveTab] = useState<'overview' | 'content' | 'submissions' | 'highlights' | 'agreements' | 'users' | 'roles'>('overview');
+  const [staffOnboarding, setStaffOnboarding] = useState<boolean>(
+    localStorage.getItem('novaura_staff_onboarding') !== 'false'
+  );
+
+  const toggleStaffOnboarding = (val: boolean) => {
+    localStorage.setItem('novaura_staff_onboarding', val ? 'true' : 'false');
+    setStaffOnboarding(val);
+    addToast({
+      type: val ? 'success' : 'info',
+      title: val ? 'Staff Onboarding Enabled' : 'Staff Onboarding Disabled',
+      message: val
+        ? 'New staff can now register via /staff-login.'
+        : 'Staff registration is now locked.',
+    });
+  };
   
   // Data states
   const [users, setUsers] = useState<User[]>([]);
@@ -843,6 +858,36 @@ export default function AdminCommandCenter() {
                   >
                     Go to Users
                   </button>
+                </div>
+              </div>
+
+              {/* Staff Onboarding Toggle */}
+              <div className="mt-6 bg-void rounded-lg p-4 border border-white/5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-medium text-text-primary">Staff Onboarding</h4>
+                    <p className="text-text-muted text-sm mt-1">
+                      Controls whether new staff can register at <span className="text-neon-cyan">/staff-login</span>.
+                      Disable this after your team is set up.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => toggleStaffOnboarding(!staffOnboarding)}
+                    className={`relative w-12 h-6 rounded-full transition-colors flex items-center ${
+                      staffOnboarding ? 'bg-neon-cyan' : 'bg-white/10'
+                    }`}
+                  >
+                    <span className={`absolute w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                      staffOnboarding ? 'translate-x-6' : 'translate-x-0.5'
+                    }`} />
+                  </button>
+                </div>
+                <div className={`mt-3 text-xs px-3 py-1.5 rounded inline-block ${
+                  staffOnboarding
+                    ? 'bg-neon-lime/10 text-neon-lime'
+                    : 'bg-neon-red/10 text-neon-red'
+                }`}>
+                  {staffOnboarding ? 'OPEN — staff can register' : 'CLOSED — registration locked'}
                 </div>
               </div>
             </div>
