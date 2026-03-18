@@ -18,10 +18,11 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SEOMeta } from '@/components/seo/SEOMeta';
-import { getAssets, getStoredCategories, initializeStorage } from '@/services/marketService';
+import { apiClient } from '@/services/apiClient';
+import { getAssets } from '@/services/marketService';
 import { formatPrice, getLicenseBadgeClass, getLicenseDisplayName } from '@/utils/format';
 import { parseIntent } from '@/utils/intentParser';
-import type { AssetFilters, EngineType, Complexity, ContentRating, LicenseTier, Asset, Category, AssetType } from '@/types';
+import type { AssetFilters, EngineType, Complexity, ContentRating, LicenseTier, Asset, AssetType } from '@/types';
 
 const engineTypes: { value: EngineType; label: string }[] = [
   { value: 'unity', label: 'Unity' },
@@ -67,7 +68,7 @@ export default function BrowsePage() {
   const [activeAssetType, setActiveAssetType] = useState<AssetType>('dev_asset');
   const [sortBy, setSortBy] = useState('popular');
   const [assets, setAssets] = useState<Asset[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   
   const [filters, setFilters] = useState<AssetFilters>({
     category: category || undefined,
@@ -92,20 +93,43 @@ export default function BrowsePage() {
     }));
   }, [searchQuery, isIntentMode, category]);
 
-  useEffect(() => {
-    initializeStorage();
-    setAssets(getAssets().filter(a => a.status === 'approved'));
-    setCategories(getStoredCategories());
-  }, []);
+  const sortMap: Record<string, string> = {
+    popular: 'popular', newest: 'newest',
+    price_asc: 'price_asc', price_desc: 'price_desc', rating: 'top_rated',
+  };
 
-  // Filter and sort assets
+  useEffect(() => {
+    const params = new URLSearchParams();
+    params.set('limit', '100');
+    if (filters.category) params.set('category', filters.category);
+    if (filters.engineType) params.set('engine', filters.engineType);
+    if (searchQuery.trim() && !isIntentMode) params.set('search', searchQuery.trim());
+    params.set('sort', sortMap[sortBy] ?? 'newest');
+
+    setIsLoading(true);
+    apiClient.get<{ assets: any[] }>(`/assets?${params}`)
+      .then(({ assets: raw }) => {
+        setAssets(raw.map(a => ({
+          ...a,
+          engineType: a.engine,
+          ratingAverage: a.ratingCount > 0 ? a.ratingSum / a.ratingCount : 0,
+          slug: a.id,
+          assetType: 'dev_asset' as AssetType,
+        })));
+      })
+      .catch(() => {
+        // API not available — fall back to localStorage
+        setAssets(getAssets());
+      })
+      .finally(() => setIsLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.category, filters.engineType, sortBy, searchQuery, isIntentMode]);
+
+  // Filter and sort assets (API handles category/engine/search/sort; rest is client-side)
   const filteredAssets = useMemo(() => {
     let result = [...assets];
 
-    // Filter by Asset Type (defaults to dev_asset for legacy compatibility)
-    result = result.filter(a => (a.assetType || 'dev_asset') === activeAssetType);
-
-    // Apply filters
+    // Apply filters not supported by API
     if (filters.category) {
       result = result.filter(a => a.category === filters.category);
     }
@@ -151,29 +175,10 @@ export default function BrowsePage() {
       }
     }
 
-    // Apply sorting
-    switch (sortBy) {
-      case 'popular':
-        result.sort((a, b) => (b.downloadCount || 0) - (a.downloadCount || 0));
-        break;
-      case 'newest':
-        result.sort((a, b) => new Date(b.publishedAt || b.createdAt).getTime() - new Date(a.publishedAt || a.createdAt).getTime());
-        break;
-      case 'price_asc':
-        result.sort((a, b) => a.price - b.price);
-        break;
-      case 'price_desc':
-        result.sort((a, b) => b.price - a.price);
-        break;
-      case 'rating':
-        result.sort((a, b) => (b.ratingAverage || 0) - (a.ratingAverage || 0));
-        break;
-    }
-
     return result;
-  }, [filters, searchQuery, sortBy, assets]);
+  }, [filters, searchQuery, isIntentMode, assets]);
 
-  const activeCategory = category ? categories.find((c: Category) => c.slug === category) : null;
+  const activeCategory = category ? { name: category, description: '' } : null;
 
   const toggleFilter = (key: keyof AssetFilters, value: string | undefined) => {
     setFilters((prev: AssetFilters) => ({
@@ -467,7 +472,9 @@ export default function BrowsePage() {
           </div>
 
           {/* Assets Grid/List */}
-          {filteredAssets.length > 0 ? (
+          {isLoading ? (
+            <div className="text-center py-20 text-text-muted">Loading assets…</div>
+          ) : filteredAssets.length > 0 ? (
             <div className={viewMode === 'grid' 
               ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6'
               : 'space-y-4'
@@ -479,7 +486,7 @@ export default function BrowsePage() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.05 }}
                 >
-                  <Link to={`/asset/${asset.slug}`} className="group block">
+                  <Link to={`/asset/${asset.id}`} className="group block">
                     {viewMode === 'grid' ? (
                       <div className="bg-void-light border border-white/5 rounded-xl overflow-hidden card-hover">
                         {/* Thumbnail */}

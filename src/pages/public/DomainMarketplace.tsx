@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   Search, Zap, Calculator,
   CheckCircle, XCircle, Loader2,
-  Lock, MessageSquare, Star,
+  MessageSquare, Star,
   Package, Crown, Check
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
@@ -17,7 +17,8 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '../../components/ui/accordion';
-import { mockDomains, tlds, faqs, cloudScalingSteps } from '../../constants/novalowData';
+import { tlds, faqs, cloudScalingSteps } from '../../constants/novalowData';
+import { apiClient } from '@/services/apiClient';
 
 // Domain Bundle Types
 interface DomainBundle {
@@ -93,11 +94,22 @@ const domainBundles: DomainBundle[] = [
   }
 ];
 
+interface DomainResult {
+  domain: string;
+  tld: string;
+  price: number;
+  registrarPrice: number;
+  icannFee: number;
+  available: boolean;
+}
+
 const DomainMarketplace: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<typeof mockDomains>([]);
+  const [searchResults, setSearchResults] = useState<DomainResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [searchError, setSearchError] = useState('');
+  const [priceNote, setPriceNote] = useState('');
   const [domainCount, setDomainCount] = useState(1);
   const [includeBuilder, setIncludeBuilder] = useState(true);
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
@@ -106,21 +118,23 @@ const DomainMarketplace: React.FC = () => {
   const handleDomainSearch = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!searchQuery.trim()) return;
-    
+
     setIsSearching(true);
     setHasSearched(true);
-    
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    const results = mockDomains.map(tld => ({
-      ...tld,
-      available: Math.random() > 0.3,
-      price: tld.price + (Math.random() > 0.5 ? 0 : Math.random() * 5)
-    }));
-    
-    setSearchResults(results.sort((a, b) => a.price - b.price));
-    setIsSearching(false);
+    setSearchError('');
+
+    try {
+      const { results, priceNote: note } = await apiClient.get<{ results: DomainResult[]; priceNote: string }>(
+        `/domains/check?query=${encodeURIComponent(searchQuery.trim())}`
+      );
+      setSearchResults(results);
+      setPriceNote(note ?? '');
+    } catch (err: any) {
+      setSearchError(err.message ?? 'Domain lookup failed. Please try again.');
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
   };
 
   const calculatePrice = () => {
@@ -172,44 +186,58 @@ const DomainMarketplace: React.FC = () => {
             </Button>
           </form>
 
-          {/* Licensing Overlay on Results */}
+          {/* Live Domain Results */}
           {hasSearched && (
-            <div className="mt-8 rounded-2xl overflow-hidden border border-white/10 bg-void-light relative">
-              {/* Coming Soon Glass Overlay */}
-              <div className="absolute inset-0 z-20 backdrop-blur-md bg-void/60 flex flex-col items-center justify-center p-8 text-center border border-neon-cyan/20 rounded-2xl">
-                <div className="w-16 h-16 rounded-full bg-neon-cyan/10 flex items-center justify-center mb-4 border border-neon-cyan/30">
-                  <Lock className="w-8 h-8 text-neon-cyan" />
-                </div>
-                <h3 className="text-2xl font-bold font-heading mb-2">Pending License</h3>
-                <p className="text-text-secondary max-w-md mb-6">
-                  We are currently finalizing our Baremetal Registrar License to ensure 100% direct pricing for our users. 
-                  Registrations will be unlocked shortly. 
+            <div className="mt-8 rounded-2xl overflow-hidden border border-white/10 bg-void-light">
+              <div className="p-4 border-b border-white/5 flex items-center justify-between">
+                <p className="text-sm text-text-muted">
+                  Results for <span className="font-semibold text-neon-cyan">{searchQuery}</span>
                 </p>
-                <div className="flex gap-4">
-                  <Badge className="bg-neon-cyan/20 text-neon-cyan border border-neon-cyan/30">Coming Soon</Badge>
-                  <Badge className="bg-neon-violet/20 text-neon-violet border border-neon-violet/30">Waitlist Active</Badge>
-                </div>
+                {searchResults.length > 0 && (
+                  <Badge className="bg-neon-cyan/10 text-neon-cyan border-neon-cyan/20 text-xs">
+                    {searchResults.filter(r => r.available).length} available
+                  </Badge>
+                )}
               </div>
 
-              <div className="max-h-80 overflow-y-auto opacity-50 grayscale">
-                <div className="p-4 border-b border-white/5">
-                  <p className="text-sm text-text-muted">
-                    Results for <span className="font-semibold text-neon-cyan">{searchQuery}</span>
-                  </p>
+              {searchError ? (
+                <div className="p-8 text-center">
+                  <XCircle className="w-10 h-10 text-red-400 mx-auto mb-3" />
+                  <p className="text-red-400 text-sm">{searchError}</p>
                 </div>
-                {searchResults.map((result) => (
-                  <div key={result.name} className="p-4 flex items-center justify-between border-b border-white/5 last:border-0">
-                    <div className="flex items-center gap-3">
-                      {result.available ? <CheckCircle className="w-5 h-5 text-green-500" /> : <XCircle className="w-5 h-5 text-red-500" />}
-                      <span className="font-heading font-semibold text-lg">{searchQuery}{result.name}</span>
+              ) : searchResults.length === 0 && !isSearching ? (
+                <div className="p-8 text-center text-text-muted text-sm">No results returned.</div>
+              ) : (
+                <div className="max-h-80 overflow-y-auto divide-y divide-white/5">
+                  {searchResults.map((result) => (
+                    <div key={result.domain} className="px-4 py-3 flex items-center justify-between hover:bg-white/2 transition-colors">
+                      <div className="flex items-center gap-3">
+                        {result.available
+                          ? <CheckCircle className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+                          : <XCircle className="w-5 h-5 text-red-400/60 flex-shrink-0" />}
+                        <span className={`font-heading font-semibold text-base ${result.available ? 'text-text-primary' : 'text-text-muted line-through'}`}>
+                          {result.domain}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className={`font-heading font-bold text-sm ${result.available ? 'text-neon-cyan' : 'text-text-muted'}`}>
+                          ${result.price.toFixed(2)}<span className="text-text-muted font-normal text-xs">/yr</span>
+                        </span>
+                        {result.available ? (
+                          <Button size="sm" className="bg-neon-cyan text-void font-bold hover:bg-neon-cyan/90 h-8 px-4 text-xs">
+                            Register
+                          </Button>
+                        ) : (
+                          <Button size="sm" disabled className="h-8 px-4 text-xs opacity-30">Taken</Button>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-4">
-                      <span className="font-heading font-bold">${result.price.toFixed(2)}</span>
-                      <Button size="sm" disabled className="bg-neon-cyan/20 text-neon-cyan">Reserved</Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
+              {priceNote && (
+                <p className="px-4 py-2 text-[11px] text-text-muted/60 border-t border-white/5">{priceNote}</p>
+              )}
             </div>
           )}
         </div>

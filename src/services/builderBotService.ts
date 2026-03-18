@@ -8,7 +8,6 @@ export type LogType = 'system' | 'command' | 'output' | 'success' | 'error' | 'i
 
 export interface PipelineOptions {
   tier?: MembershipTier;
-  kimiKey?: string; // used for Studio+ refinement sweep
 }
 
 /** Character-level diff ratio: 0 = identical, 1 = completely different */
@@ -50,7 +49,6 @@ const TIER_RANK: Record<MembershipTier, number> = {
 async function runKimiRefinementSweep(
   code: string,
   originalPrompt: string,
-  kimiKey: string,
   onLog: (type: LogType, text: string) => void
 ): Promise<string> {
   onLog('system', '');
@@ -96,7 +94,7 @@ Return ONLY the complete enhanced code wrapped in a single \`\`\`html block. No 
 
   onLog('build', '[KIMI-SWEEP] Applying creative architect pass — visual enhancement + logic completion...');
 
-  const response = await aiOrchestrator.sendToKimi(kimiPrompt, kimiKey);
+  const response = await aiOrchestrator.proxyChat('kimi', kimiPrompt, 'moonshot-v1-8k');
 
   if (response.error) {
     onLog('error', `[KIMI-SWEEP] Kimi sweep failed: ${response.error}`);
@@ -236,15 +234,7 @@ Return ONLY the complete improved code wrapped in a \`\`\`html block. No explana
 
   // ── STUDIO+ REFINEMENT SWEEP (Kimi) ──────────────────────────────────────
   if (isStudioPlus) {
-    // @ts-ignore
-    const kimiKey = options?.kimiKey || (import.meta.env.VITE_KIMI_API_KEY as string);
-
-    if (kimiKey) {
-      workingCode = await runKimiRefinementSweep(workingCode, initialPrompt, kimiKey, onLog);
-    } else {
-      onLog('info', '[KIMI-SWEEP] No Kimi key configured — refinement sweep skipped.');
-      onLog('info', '[KIMI-SWEEP] Add a Kimi key in Swarm Settings to unlock Studio refinement.');
-    }
+    workingCode = await runKimiRefinementSweep(workingCode, initialPrompt, onLog);
   }
 
   onLog('success', '[BUILDERBOT] Pipeline complete. Code deployed to editor.');

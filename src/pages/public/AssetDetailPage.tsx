@@ -1,22 +1,22 @@
-import { useState, type ChangeEvent } from 'react';
+import { useState, useEffect, type ChangeEvent } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { 
-  Star, 
-  ShoppingCart, 
-  Heart, 
-  Share2, 
+import {
+  Star,
+  ShoppingCart,
+  Heart,
+  Share2,
   AlertCircle,
   FileText,
   Box,
   Calendar,
-  User,
   Tag,
   ChevronRight
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { getAssetBySlug, getReviewsByAsset, getAssets } from '@/services/marketService';
+import { apiClient } from '@/services/apiClient';
+import { getAssets } from '@/services/marketService';
 import { useAuthStore } from '@/stores/authStore';
 import { useCartStore } from '@/stores/cartStore';
 import { useUIStore } from '@/stores/uiStore';
@@ -92,21 +92,71 @@ const licenseDetails: Record<LicenseTier, { title: string; description: string; 
 };
 
 export default function AssetDetailPage() {
-  const { slug } = useParams();
+  const { id } = useParams();
   const navigate = useNavigate();
-  const asset = getAssetBySlug(slug || '');
-  const reviews = asset ? getReviewsByAsset(asset.id) : [];
-  
+
   const { isAuthenticated } = useAuthStore();
   const { addItem, isInCart } = useCartStore();
   const { addToast, openLoginModal } = useUIStore();
-  
-  const [isWishlisted, setIsWishlisted] = useState(false);
-  const [customPrice, setCustomPrice] = useState<string>(
-    asset?.pricingType === 'donation' ? (asset.suggestedDonation ? (asset.suggestedDonation / 100).toString() : '0') : ''
-  );
 
-  if (!asset) {
+  const [asset, setAsset] = useState<any>(null);
+  const [relatedAssets, setRelatedAssets] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+  const [isWishlisted, setIsWishlisted] = useState(false);
+  const [customPrice, setCustomPrice] = useState<string>('0');
+
+  useEffect(() => {
+    if (!id) return;
+    setIsLoading(true);
+    apiClient.get<{ asset: any }>(`/assets/${id}`)
+      .then(({ asset: raw }) => {
+        const mapped = {
+          ...raw,
+          engineType: raw.engine,
+          ratingAverage: raw.ratingCount > 0 ? (raw.ratingSum / raw.ratingCount).toFixed(1) : '0.0',
+          slug: raw.id,
+        };
+        setAsset(mapped);
+        setCustomPrice(raw.pricingType === 'donation' && raw.suggestedDonation
+          ? (raw.suggestedDonation / 100).toString()
+          : '0');
+        // Fetch related assets by same category
+        return apiClient.get<{ assets: any[] }>(`/assets?category=${raw.category}&limit=5`);
+      })
+      .then(({ assets: raw }) => {
+        setRelatedAssets(
+          raw
+            .filter((a: any) => a.id !== id)
+            .slice(0, 4)
+            .map((a: any) => ({ ...a, engineType: a.engine }))
+        );
+      })
+      .catch(() => {
+        // API not available — fall back to localStorage
+        const local = getAssets().find((a: any) => a.id === id || a.slug === id);
+        if (local) {
+          setAsset({ ...local, engineType: local.engineType ?? local.engine });
+          const related = getAssets()
+            .filter((a: any) => a.category === local.category && a.id !== local.id)
+            .slice(0, 4);
+          setRelatedAssets(related);
+        } else {
+          setNotFound(true);
+        }
+      })
+      .finally(() => setIsLoading(false));
+  }, [id]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen pt-24 flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-neon-cyan/30 border-t-neon-cyan rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (notFound || !asset) {
     return (
       <div className="min-h-screen pt-24 flex items-center justify-center">
         <div className="text-center">
@@ -124,6 +174,8 @@ export default function AssetDetailPage() {
       </div>
     );
   }
+
+  const reviews: any[] = [];
 
   const handleAddToCart = () => {
     if (!isAuthenticated) {
@@ -175,10 +227,6 @@ export default function AssetDetailPage() {
       title: isWishlisted ? 'Removed from wishlist' : 'Added to wishlist',
     });
   };
-
-  const relatedAssets = getAssets()
-    .filter(a => a.category === asset.category && a.id !== asset.id)
-    .slice(0, 4);
 
   return (
     <div className="min-h-screen pt-24 pb-12">
@@ -309,9 +357,9 @@ export default function AssetDetailPage() {
                   </h3>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     {relatedAssets.map(related => (
-                      <Link 
-                        key={related.id} 
-                        to={`/asset/${related.slug}`}
+                      <Link
+                        key={related.id}
+                        to={`/asset/${related.id}`}
                         className="group block bg-void-light border border-white/5 rounded-lg overflow-hidden card-hover"
                       >
                         <div className="aspect-video bg-void flex items-center justify-center">

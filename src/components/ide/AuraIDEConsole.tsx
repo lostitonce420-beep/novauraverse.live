@@ -167,15 +167,11 @@ const AuraIDEConsole: React.FC = () => {
       addTerminalLine({ type, text });
     };
 
-    // @ts-ignore
-    const effectiveKimiKey = kimiKey || (import.meta.env.VITE_KIMI_API_KEY as string);
-
     const isStudioPlus = TIER_RANK[userTier] >= TIER_RANK['studio'];
 
     try {
       const result = await runPipeline(buildPrompt, editorCode, onLog, {
         tier: userTier,
-        kimiKey: effectiveKimiKey,
       });
       if (!abortRef.current) {
         setEditorCode(result);

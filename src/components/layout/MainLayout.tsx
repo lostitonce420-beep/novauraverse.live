@@ -2,7 +2,6 @@ import { Outlet } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import Navbar from './Navbar';
 import Footer from './Footer';
-import FloatingMessenger from '../social/FloatingMessenger';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { ChevronLeft, Home } from 'lucide-react';
@@ -78,7 +77,6 @@ export default function MainLayout({ hideNav = false }: MainLayoutProps) {
         <AuraGuide />
       </div>
 
-      {!hideNav && <FloatingMessenger />}
     </div>
   );
 }

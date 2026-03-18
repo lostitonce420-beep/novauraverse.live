@@ -289,7 +289,7 @@ export default function UserProfilePage() {
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                     {assets.map((asset) => (
-                      <Link key={asset.id} to={`/asset/${asset.slug}`}>
+                      <Link key={asset.id} to={`/asset/${asset.id}`}>
                         <div className="bg-void-light border border-white/5 rounded-xl overflow-hidden hover:border-neon-cyan/30 transition-colors">
                           <div className="aspect-video bg-void flex items-center justify-center">
                             {asset.thumbnailUrl ? (

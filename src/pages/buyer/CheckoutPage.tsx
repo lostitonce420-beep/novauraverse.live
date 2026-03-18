@@ -17,6 +17,7 @@ import { useUIStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
 import { formatPrice, getLicenseDisplayName } from '@/utils/format';
 import { calculateRevenueSplits } from '@/services/royaltyService';
+import { apiClient } from '@/services/apiClient';
 import type { RoyaltyLedger } from '@/types';
 
 export default function CheckoutPage() {
@@ -66,30 +67,41 @@ export default function CheckoutPage() {
     }
 
     setIsProcessing(true);
-    
-    // Simulate payment processing
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Phase 3: Log purchases for lineage tracking
-    if (user) {
-      const newPurchasedIds = [...(user.purchasedAssetIds || [])];
-      items.forEach(item => {
-        if (!newPurchasedIds.includes(item.assetId)) {
-          newPurchasedIds.push(item.assetId);
-        }
-      });
-      await updateProfile({ purchasedAssetIds: newPurchasedIds });
-    }
 
-    setIsProcessing(false);
-    setStep(3);
-    clearCart();
-    
-    addToast({
-      type: 'success',
-      title: 'Purchase successful!',
-      message: 'Your assets are ready for download.',
-    });
+    try {
+      for (const item of items) {
+        await apiClient.post('/orders', {
+          assetId: item.assetId,
+          eulaVersion: '1.0',
+        });
+      }
+
+      if (user) {
+        const newPurchasedIds = [...(user.purchasedAssetIds || [])];
+        items.forEach(item => {
+          if (!newPurchasedIds.includes(item.assetId)) {
+            newPurchasedIds.push(item.assetId);
+          }
+        });
+        await updateProfile({ purchasedAssetIds: newPurchasedIds });
+      }
+
+      clearCart();
+      addToast({
+        type: 'success',
+        title: 'Purchase successful!',
+        message: 'Your assets are ready for download.',
+      });
+      navigate('/orders');
+    } catch {
+      addToast({
+        type: 'error',
+        title: 'Purchase failed',
+        message: 'Something went wrong. Please try again.',
+      });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (

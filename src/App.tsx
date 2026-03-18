@@ -132,7 +132,7 @@ function AppRoutes() {
               <Route path="/" element={<HomePage />} />
               <Route path="/browse" element={<BrowsePage />} />
               <Route path="/browse/:category" element={<BrowsePage />} />
-              <Route path="/asset/:slug" element={<AssetDetailPage />} />
+              <Route path="/asset/:id" element={<AssetDetailPage />} />
               <Route path="/creator/:username" element={<CreatorProfilePage />} />
               <Route path="/search" element={<SearchPage />} />
               <Route path="/legal/privacy" element={<PrivacyPolicyPage />} />

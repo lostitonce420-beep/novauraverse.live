@@ -31,13 +31,14 @@ import {
   updateUserRole, 
   initializeUserStorage
 } from '@/services/userStorage';
-import { 
-  getPendingAssets, 
-  approveAsset, 
-  rejectAsset, 
+import {
   getAssets,
-  initializeStorage 
+  initializeStorage,
+  getPendingAssets,
+  approveAsset,
+  rejectAsset
 } from '@/services/marketService';
+import { apiClient } from '@/services/apiClient';
 import { getUserAgreements } from '@/legal/eulaBoilerplate';
 import type { User, Asset } from '@/types';
 
@@ -112,12 +113,18 @@ export default function AdminCommandCenter() {
   // Content editing
   const [editedContent, setEditedContent] = useState(siteContent);
 
+  const loadPendingAssets = useCallback(() => {
+    apiClient.get<{ assets: any[] }>('/assets/pending')
+      .then(({ assets }) => setPendingAssets(assets.map((a: any) => ({ ...a, engineType: a.engine }))))
+      .catch(() => setPendingAssets(getPendingAssets()));
+  }, []);
+
   // Define loadData with useCallback BEFORE useEffect hooks that use it
   const loadData = useCallback(() => {
     setUsers(getAllUsers());
-    setPendingAssets(getPendingAssets());
     setAllAssets(getAssets());
-    
+    loadPendingAssets();
+
     // Load all agreements
     const allUsers = getAllUsers();
     let allAgreements: any[] = [];
@@ -126,7 +133,7 @@ export default function AdminCommandCenter() {
       allAgreements = [...allAgreements, ...userAgreements];
     });
     setAgreements(allAgreements);
-  }, []);
+  }, [loadPendingAssets]);
 
   useEffect(() => {
     initializeUserStorage();
@@ -146,15 +153,21 @@ export default function AdminCommandCenter() {
   }
 
   const handleApproveAsset = (assetId: string) => {
-    approveAsset(assetId);
-    addToast({ type: 'success', title: 'Asset Approved', message: 'The asset is now live on the marketplace.' });
-    loadData();
+    apiClient.post(`/assets/${assetId}/approve`, {})
+      .catch(() => approveAsset(assetId))
+      .then(() => {
+        addToast({ type: 'success', title: 'Asset Approved', message: 'The asset is now live on the marketplace.' });
+        loadPendingAssets();
+      });
   };
 
   const handleRejectAsset = (assetId: string) => {
-    rejectAsset(assetId, 'Does not meet platform guidelines');
-    addToast({ type: 'info', title: 'Asset Rejected', message: 'The asset has been rejected.' });
-    loadData();
+    apiClient.post(`/assets/${assetId}/reject`, { reason: 'Does not meet platform guidelines' })
+      .catch(() => rejectAsset(assetId, 'Does not meet platform guidelines'))
+      .then(() => {
+        addToast({ type: 'info', title: 'Asset Rejected', message: 'The asset has been rejected.' });
+        loadPendingAssets();
+      });
   };
 
   const handleRoleChange = (userId: string, newRole: 'buyer' | 'creator' | 'admin' | 'moderator') => {

@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Heart, 
-  MessageSquare, 
+import {
+  Heart,
+  MessageSquare,
   Share2,
   TrendingUp,
   Sparkles
@@ -11,6 +11,8 @@ import { UserBadge } from '@/components/ui/UserBadge';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/authStore';
 import { useSocialStore } from '@/stores/socialStore';
+import { getPostComments } from '@/services/socialService';
+import type { SocialComment } from '@/types';
 
 export default function FeedPage() {
   const { user } = useAuthStore();
@@ -132,12 +134,22 @@ export default function FeedPage() {
 function PostItem({ post, onLike, onComment }: { post: any, onLike: () => void, onComment: (content: string) => void }) {
   const [showComments, setShowComments] = useState(false);
   const [commentInput, setCommentInput] = useState('');
+  const [loadedComments, setLoadedComments] = useState<SocialComment[]>([]);
+
+  const toggleComments = () => {
+    if (!showComments) {
+      setLoadedComments(getPostComments(post.id));
+    }
+    setShowComments(!showComments);
+  };
 
   const handleComment = (e: React.FormEvent) => {
     e.preventDefault();
     if (!commentInput.trim()) return;
     onComment(commentInput);
     setCommentInput('');
+    // Reload comments to show the new one
+    setLoadedComments(getPostComments(post.id));
   };
 
   return (
@@ -190,12 +202,12 @@ function PostItem({ post, onLike, onComment }: { post: any, onLike: () => void, 
           <Heart className={`w-5 h-5 ${post.likes > 0 ? 'fill-neon-magenta text-neon-magenta' : ''}`} />
           {post.likes}
         </button>
-        <button 
-          onClick={() => setShowComments(!showComments)}
+        <button
+          onClick={toggleComments}
           className="flex items-center gap-2 text-sm font-medium text-text-muted hover:text-neon-cyan transition-colors"
         >
           <MessageSquare className="w-5 h-5" />
-          {post.comments?.length || 0}
+          {post.comments || 0}
         </button>
         <div className="flex-grow" />
         <div className="flex items-center gap-1.5 text-xs text-text-muted">
@@ -227,7 +239,7 @@ function PostItem({ post, onLike, onComment }: { post: any, onLike: () => void, 
               </form>
 
               <div className="space-y-4">
-                {post.comments?.map((comment: any) => (
+                {loadedComments.map((comment: any) => (
                   <div key={comment.id} className="flex gap-3">
                     <img src={comment.author?.avatar} className="w-8 h-8 rounded-full" />
                     <div className="flex-grow bg-void p-3 rounded-xl border border-white/5">
@@ -244,6 +256,9 @@ function PostItem({ post, onLike, onComment }: { post: any, onLike: () => void, 
                     </div>
                   </div>
                 ))}
+                {loadedComments.length === 0 && (
+                  <p className="text-sm text-text-muted text-center py-2">No comments yet. Be the first.</p>
+                )}
               </div>
             </div>
           </motion.div>

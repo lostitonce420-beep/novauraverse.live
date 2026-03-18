@@ -49,6 +49,8 @@ export default function Navbar() {
   const navLinks = [
     { label: 'Discourse', href: '/hub' },
     { label: 'Market', href: '/browse' },
+    { label: 'Domains', href: '/domains' },
+    { label: 'Site Builder', href: '/builder' },
     { label: 'Strategist', href: '/strategist' },
     { label: 'Games', href: '/games' },
     { label: 'Chat', href: '/chat' },
