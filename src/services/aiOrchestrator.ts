@@ -13,7 +13,7 @@ export interface AIResponse {
  */
 export const aiOrchestrator = {
   async sendMessage(prompt: string, context: string, trainingPlatform: TrainingPlatform = 'ide_console'): Promise<AIResponse> {
-    const { provider, geminiKey, claudeKey, openaiKey, kimiKey, localEndpoint, isPersistentPersona } = useAIStore.getState();
+    const { provider, geminiKey, claudeKey, openaiKey, kimiKey, vertexKey, vertexProjectId, localEndpoint, isPersistentPersona } = useAIStore.getState();
     const { user } = useAuthStore.getState();
 
     let personaContext = "";
@@ -102,6 +102,13 @@ Response Guidelines:
     } else if (provider === 'kimi') {
       // @ts-ignore
       result = await this.sendToKimi(systemPrompt, kimiKey || (import.meta.env.VITE_KIMI_API_KEY as string));
+    } else if (provider === 'vertex') {
+      // @ts-ignore
+      const key = vertexKey || (import.meta.env.VITE_VERTEX_AI_KEY as string);
+      // @ts-ignore
+      const projectId = vertexProjectId || (import.meta.env.VITE_VERTEX_PROJECT_ID as string);
+      const vertexModel = tier === 'catalyst' ? 'gemini-2.0-pro' : tier === 'studio' ? 'gemini-2.0-flash' : 'gemini-2.0-flash';
+      result = await this.sendToVertex(systemPrompt, key, projectId, vertexModel);
     } else {
       result = await this.sendToLocal(systemPrompt, localEndpoint, provider);
     }
@@ -238,6 +245,81 @@ Response Guidelines:
       return { content };
     } catch (err) {
       return { content: '', error: 'Failed to connect to Gemini API.' };
+    }
+  },
+
+  async sendToVertex(prompt: string, apiKey: string, projectId: string, model = 'gemini-2.0-flash'): Promise<AIResponse> {
+    if (!apiKey) return { content: '', error: 'Vertex AI key missing.' };
+
+    try {
+      // If we have a project ID, use the Vertex AI endpoint; otherwise fall back to Gemini API
+      const url = projectId
+        ? `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/${model}:generateContent`
+        : `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (projectId) headers['Authorization'] = `Bearer ${apiKey}`;
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        return { content: '', error: `Vertex AI Error: ${response.status} ${err.error?.message || ''}` };
+      }
+
+      const data = await response.json();
+      return { content: data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response from Vertex AI.' };
+    } catch {
+      return { content: '', error: 'Failed to connect to Vertex AI.' };
+    }
+  },
+
+  /**
+   * Generate an image via Vertex AI Imagen 3.
+   * Returns a base64 data URL or an error string.
+   */
+  async generateImage(prompt: string, apiKey?: string, projectId?: string): Promise<{ imageUrl?: string; error?: string }> {
+    // @ts-ignore
+    const key = apiKey || (import.meta.env.VITE_VERTEX_AI_KEY as string);
+    // @ts-ignore
+    const pid = projectId || (import.meta.env.VITE_VERTEX_PROJECT_ID as string);
+
+    if (!key || !pid) return { error: 'Vertex AI key and project ID required for image generation.' };
+
+    try {
+      const response = await fetch(
+        `https://us-central1-aiplatform.googleapis.com/v1/projects/${pid}/locations/us-central1/publishers/google/models/imagen-3.0-generate-002:predict`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${key}`,
+          },
+          body: JSON.stringify({
+            instances: [{ prompt }],
+            parameters: { sampleCount: 1, aspectRatio: '1:1' },
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        return { error: `Imagen Error: ${response.status} ${err.error?.message || ''}` };
+      }
+
+      const data = await response.json();
+      const b64 = data.predictions?.[0]?.bytesBase64Encoded;
+      if (!b64) return { error: 'No image returned from Imagen.' };
+      return { imageUrl: `data:image/png;base64,${b64}` };
+    } catch {
+      return { error: 'Failed to connect to Vertex AI Imagen.' };
     }
   },
 

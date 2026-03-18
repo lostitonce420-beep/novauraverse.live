@@ -29,6 +29,7 @@ const ALL_PROVIDERS = [
   { id: 'claude',   label: 'Claude',    minTier: 'creator' as MembershipTier },
   { id: 'openai',   label: 'OpenAI',    minTier: 'free'    as MembershipTier },
   { id: 'kimi',     label: 'Kimi',      minTier: 'creator' as MembershipTier },
+  { id: 'vertex',   label: 'Vertex AI', minTier: 'free'    as MembershipTier },
   { id: 'ollama',   label: 'Ollama',    minTier: 'free'    as MembershipTier },
   { id: 'lmstudio', label: 'LM Studio', minTier: 'free'    as MembershipTier },
 ];
@@ -43,6 +44,7 @@ const AuraIDEConsole: React.FC = () => {
     claudeKey,
     openaiKey,
     kimiKey,
+    vertexKey,
     messages,
     addMessage,
     isThinking,
@@ -79,6 +81,7 @@ const AuraIDEConsole: React.FC = () => {
     if (provider === 'claude') return claudeKey.trim().length > 0;
     if (provider === 'openai') return openaiKey.trim().length > 0;
     if (provider === 'kimi')   return kimiKey.trim().length > 0;
+    if (provider === 'vertex') return vertexKey.trim().length > 0;
     return false; // ollama / lmstudio handled by cost===0
   })();
   const visibleProviders = ALL_PROVIDERS.filter(p => TIER_RANK[p.minTier] <= TIER_RANK[userTier]);

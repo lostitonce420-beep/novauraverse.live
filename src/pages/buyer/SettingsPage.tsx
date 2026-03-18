@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { User, Lock, CreditCard, Plus, Trash2, Cpu, Monitor, Laptop, MousePointer2, Layers, Globe, Twitter, Github, MonitorSmartphone, Image as ImageIcon, Key, Copy, Check, ExternalLink, Zap } from 'lucide-react';
+import { User, Lock, CreditCard, Plus, Trash2, Cpu, Monitor, Laptop, MousePointer2, Layers, Globe, Twitter, Github, MonitorSmartphone, Image as ImageIcon, Key, Copy, Check, ExternalLink, Zap, ShieldCheck, BrainCircuit } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuthStore } from '@/stores/authStore';
@@ -139,6 +139,7 @@ export default function SettingsPage() {
               <TabsTrigger value="performance">Performance</TabsTrigger>
               <TabsTrigger value="account">Account</TabsTrigger>
               <TabsTrigger value="notifications">Notifications</TabsTrigger>
+              <TabsTrigger value="privacy">Privacy</TabsTrigger>
               <TabsTrigger value="billing">Billing</TabsTrigger>
             </TabsList>
 
@@ -726,6 +727,90 @@ export default function SettingsPage() {
                   ))}
                 </div>
               </div>
+            </TabsContent>
+
+            <TabsContent value="privacy" className="mt-0">
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-void-light border border-white/5 rounded-xl p-6 space-y-6"
+              >
+                <div>
+                  <h2 className="font-heading text-xl font-bold text-text-primary mb-1 flex items-center gap-2">
+                    <ShieldCheck className="w-5 h-5 text-neon-cyan" /> Privacy & Data
+                  </h2>
+                  <p className="text-text-secondary text-sm">Control how your interactions contribute to NovAura's AI development.</p>
+                </div>
+
+                {/* Training Data Consent Toggle */}
+                <div className="bg-void border border-white/10 rounded-xl p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <BrainCircuit className="w-4 h-4 text-neon-magenta" />
+                        <span className="font-bold text-text-primary">AI Training Contribution</span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
+                          user?.trainingConsentGiven
+                            ? 'bg-neon-lime/10 text-neon-lime'
+                            : 'bg-white/5 text-text-muted'
+                        }`}>
+                          {user?.trainingConsentGiven ? 'Opted In' : 'Opted Out'}
+                        </span>
+                      </div>
+                      <p className="text-sm text-text-secondary leading-relaxed">
+                        Allow your conversations and code sessions with Nova to be used as anonymized training material
+                        for future model development. Variety and emergence are valued — creative, unconventional,
+                        and exploratory interactions are especially useful.
+                      </p>
+                      <p className="text-xs text-text-muted mt-2">
+                        Hard lines: no malicious, morbid, or non-consensual content is ever captured regardless of this setting.
+                        You can change this at any time.
+                      </p>
+                      {user?.trainingConsentAt && (
+                        <p className="text-xs text-text-muted mt-1">
+                          Last updated: {new Date(user.trainingConsentAt).toLocaleDateString()}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      onClick={async () => {
+                        const newValue = !user?.trainingConsentGiven;
+                        try {
+                          await updateProfile({
+                            trainingConsentGiven: newValue,
+                            trainingConsentAt: new Date().toISOString(),
+                            trainingConsentVersion: '1.0',
+                          });
+                          toast.success(newValue
+                            ? 'Training contribution enabled — thank you for helping Nova grow.'
+                            : 'Training contribution disabled. Your sessions will no longer be used for training.'
+                          );
+                        } catch {
+                          toast.error('Failed to update privacy settings');
+                        }
+                      }}
+                      disabled={isLoading}
+                      className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 mt-1 ${
+                        user?.trainingConsentGiven
+                          ? 'bg-neon-magenta'
+                          : 'bg-white/10 hover:bg-white/20'
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                          user?.trainingConsentGiven ? 'translate-x-6' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-neon-cyan/5 border border-neon-cyan/10 rounded-xl">
+                  <p className="text-xs text-text-muted leading-relaxed italic">
+                    "You write your own stories when interacting with silicon minds. What gets remembered shapes what comes next."
+                  </p>
+                </div>
+              </motion.div>
             </TabsContent>
 
             <TabsContent value="billing" className="mt-0">

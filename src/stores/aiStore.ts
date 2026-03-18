@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 
-export type AIProvider = 'gemini' | 'claude' | 'openai' | 'kimi' | 'ollama' | 'lmstudio';
+export type AIProvider = 'gemini' | 'claude' | 'openai' | 'kimi' | 'vertex' | 'ollama' | 'lmstudio';
 
 export interface ChatMessage {
   id: string;
@@ -16,6 +16,8 @@ interface AIState {
   claudeKey: string;
   openaiKey: string;
   kimiKey: string;
+  vertexKey: string;
+  vertexProjectId: string;
   localEndpoint: string;
   messages: ChatMessage[];
   isThinking: boolean;
@@ -30,6 +32,8 @@ interface AIState {
   setClaudeKey: (key: string) => void;
   setOpenaiKey: (key: string) => void;
   setKimiKey: (key: string) => void;
+  setVertexKey: (key: string) => void;
+  setVertexProjectId: (id: string) => void;
   setLocalEndpoint: (endpoint: string) => void;
   addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => void;
   clearHistory: () => void;
@@ -48,6 +52,8 @@ export const useAIStore = create<AIState>()(
       claudeKey: '',
       openaiKey: '',
       kimiKey: '',
+      vertexKey: '',
+      vertexProjectId: '',
       localEndpoint: 'http://localhost:11434/api/generate', // Default Ollama
       messages: [],
       isThinking: false,
@@ -61,6 +67,8 @@ export const useAIStore = create<AIState>()(
       setClaudeKey: (claudeKey) => set({ claudeKey }),
       setOpenaiKey: (openaiKey) => set({ openaiKey }),
       setKimiKey: (kimiKey) => set({ kimiKey }),
+      setVertexKey: (vertexKey) => set({ vertexKey }),
+      setVertexProjectId: (vertexProjectId) => set({ vertexProjectId }),
       setLocalEndpoint: (localEndpoint) => set({ localEndpoint }),
       
       addMessage: (msg) => set((state) => ({
