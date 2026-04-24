@@ -1,7 +1,8 @@
+import { kernelStorage } from '@/kernel/kernelStorage.js';
 export interface MailAccount {
   id: string;
   email: string;
-  provider: 'ionos' | 'gmail' | 'custom';
+  provider: 'titan' | 'gmail' | 'custom';
   smtpHost?: string;
   smtpPort?: number;
   isCompanyAccount: boolean;
@@ -29,17 +30,17 @@ class MailService {
   private getEmailKey(userId: string) { return `${STORAGE_KEYS.emails}${userId}`; }
 
   getAccounts(userId: string): MailAccount[] {
-    const data = localStorage.getItem(this.getAccountKey(userId));
+    const data = kernelStorage.getItem(this.getAccountKey(userId));
     return data ? JSON.parse(data) : [{
       id: 'acc-1',
-      email: 'ambassador@novaura.tech',
-      provider: 'ionos',
+      email: 'ambassador@novaura.life',
+      provider: 'titan',
       isCompanyAccount: true
     }];
   }
 
   getEmails(userId: string): EmailMessage[] {
-    const data = localStorage.getItem(this.getEmailKey(userId));
+    const data = kernelStorage.getItem(this.getEmailKey(userId));
     return data ? JSON.parse(data) : [];
   }
 
@@ -48,7 +49,7 @@ class MailService {
     const existingIndex = accounts.findIndex(a => a.id === account.id);
     if (existingIndex >= 0) accounts[existingIndex] = account;
     else accounts.push(account);
-    localStorage.setItem(this.getAccountKey(userId), JSON.stringify(accounts));
+    kernelStorage.setItem(this.getAccountKey(userId), JSON.stringify(accounts));
   }
 
   sendEmail(userId: string, email: Omit<EmailMessage, 'id' | 'createdAt'>): EmailMessage {
@@ -59,7 +60,7 @@ class MailService {
       createdAt: new Date().toISOString()
     };
     emails.push(newEmail);
-    localStorage.setItem(this.getEmailKey(userId), JSON.stringify(emails));
+    kernelStorage.setItem(this.getEmailKey(userId), JSON.stringify(emails));
     
     // In a real production app, this would call an API or SMTP relay
     console.log('EMAIL SENT:', newEmail);

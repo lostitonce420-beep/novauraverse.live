@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -30,11 +30,26 @@ export default function FreeItemsPage() {
   const [sortBy, setSortBy] = useState<string>('popular');
   const [pricingFilter, setPricingFilter] = useState<'all' | 'free' | 'donation'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [allFreeItems, setAllFreeItems] = useState<Asset[]>([]);
+  const [_isLoading, setIsLoading] = useState(true);
 
-  const allFreeItems = useMemo(() => {
-    return getAssets().filter(
-      (a: Asset) => (a.pricingType === 'free' || a.pricingType === 'donation') && a.status === 'approved'
-    );
+  useEffect(() => {
+    const loadFreeItems = async () => {
+      setIsLoading(true);
+      try {
+        const assets = await getAssets();
+        const freeItems = assets.filter(
+          (a: Asset) => (a.pricingType === 'free' || a.pricingType === 'donation') && a.status === 'approved'
+        );
+        setAllFreeItems(freeItems);
+      } catch (error) {
+        console.error('Failed to load free items:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadFreeItems();
   }, []);
 
   const filteredItems = useMemo(() => {
@@ -227,11 +242,11 @@ export default function FreeItemsPage() {
                         </p>
 
                         {/* Donation suggestion for PWYW */}
-                        {item.pricingType === 'donation' && item.suggestedDonation && (
+                        {item.pricingType === 'donation' && (item as any).suggestedDonation && (
                           <div className="bg-neon-violet/5 border border-neon-violet/20 rounded-lg px-3 py-2 mb-3">
                             <p className="text-xs text-neon-violet flex items-center gap-1">
                               <DollarSign className="w-3 h-3" />
-                              Suggested: {formatPrice(item.suggestedDonation)}
+                              Suggested: {formatPrice((item as any).suggestedDonation || 0)}
                             </p>
                           </div>
                         )}

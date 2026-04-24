@@ -23,6 +23,9 @@ import {
 import { Input } from '@/components/ui/input';
 import { formatPrice } from '@/utils/format';
 
+import { db } from '@/config/firebase';
+import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+
 // Music genres
 const genres = [
   { id: 'all', name: 'All', icon: Music },
@@ -42,106 +45,31 @@ const usageTypes = [
   { id: 'exclusive', name: 'Exclusive Rights', color: 'text-neon-magenta' },
 ];
 
-// Mock music tracks - in production, these would come from the database
-const mockTracks = [
-  {
-    id: '1',
-    title: 'Neon Horizon',
-    artist: 'SynthWave Studios',
-    artistId: 'artist1',
-    genre: 'electronic',
-    duration: 184,
-    price: 1500,
-    previewUrl: '/audio/preview1.mp3',
-    coverArt: '/music/covers/neon-horizon.jpg',
-    licenseType: 'commercial',
-    royaltyRate: 1,
-    bpm: 128,
-    tags: ['synthwave', 'retro', 'upbeat'],
-    createdAt: '2026-01-15',
-    plays: 1247,
-    likes: 89,
-  },
-  {
-    id: '2',
-    title: 'Epic Battle Theme',
-    artist: 'Orchestra One',
-    artistId: 'artist2',
-    genre: 'orchestral',
-    duration: 245,
-    price: 2500,
-    previewUrl: '/audio/preview2.mp3',
-    coverArt: '/music/covers/epic-battle.jpg',
-    licenseType: 'commercial',
-    royaltyRate: 1,
-    bpm: 140,
-    tags: ['epic', 'battle', 'cinematic'],
-    createdAt: '2024-01-10',
-    plays: 892,
-    likes: 156,
-  },
-  {
-    id: '3',
-    title: 'Space Ambient',
-    artist: 'Cosmic Audio',
-    artistId: 'artist3',
-    genre: 'ambient',
-    duration: 420,
-    price: 0,
-    previewUrl: '/audio/preview3.mp3',
-    coverArt: '/music/covers/space-ambient.jpg',
-    licenseType: 'free',
-    royaltyRate: 0,
-    bpm: 0,
-    tags: ['ambient', 'space', 'relaxing'],
-    createdAt: '2024-01-05',
-    plays: 2341,
-    likes: 312,
-  },
-  {
-    id: '4',
-    title: '8-Bit Adventure',
-    artist: 'ChipTune Master',
-    artistId: 'artist4',
-    genre: 'chiptune',
-    duration: 156,
-    price: 800,
-    previewUrl: '/audio/preview4.mp3',
-    coverArt: '/music/covers/8bit-adventure.jpg',
-    licenseType: 'commercial',
-    royaltyRate: 1,
-    bpm: 160,
-    tags: ['chiptune', 'retro', 'game'],
-    createdAt: '2024-01-20',
-    plays: 567,
-    likes: 78,
-  },
-  {
-    id: '5',
-    title: 'Dungeon Crawler SFX Pack',
-    artist: 'SoundForge',
-    artistId: 'artist5',
-    genre: 'sfx',
-    duration: 0,
-    price: 1200,
-    previewUrl: '/audio/preview5.mp3',
-    coverArt: '/music/covers/dungeon-sfx.jpg',
-    licenseType: 'commercial',
-    royaltyRate: 1,
-    bpm: 0,
-    tags: ['sfx', 'dungeon', 'rpg'],
-    createdAt: '2024-01-18',
-    plays: 423,
-    likes: 45,
-    trackCount: 45,
-  },
-];
+interface Track {
+  id: string;
+  title: string;
+  artist: string;
+  artistId: string;
+  genre: string;
+  duration: number;
+  price: number;
+  previewUrl: string;
+  coverArt: string;
+  licenseType: string;
+  royaltyRate: number;
+  bpm: number;
+  tags: string[];
+  createdAt: string;
+  plays: number;
+  likes: number;
+  trackCount?: number;
+}
 
 // Format duration from seconds to MM:SS
 const formatDuration = (seconds: number): string => {
-  if (seconds === 0) return '--:--';
+  if (!seconds || seconds === 0) return '--:--';
   const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
+  const secs = Math.floor(seconds % 60);
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
@@ -149,7 +77,8 @@ export default function MusicMarketplacePage() {
   const [activeGenre, setActiveGenre] = useState('all');
   const [activeUsage, setActiveUsage] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [currentTrack, setCurrentTrack] = useState<typeof mockTracks[0] | null>(null);
+  const [tracks, setTracks] = useState<Track[]>([]);
+  const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [volume, setVolume] = useState(80);
@@ -159,19 +88,46 @@ export default function MusicMarketplacePage() {
   
   const progressRef = useRef<HTMLDivElement>(null);
 
-  // Filter tracks
-  const filteredTracks = mockTracks.filter((track) => {
+  // Fetch real tracks from Firestore
+  useEffect(() => {
+    const fetchTracks = async () => {
+      if (!db) return;
+      
+      try {
+        const assetsRef = collection(db, 'assets');
+        // Get all audio assets ordered by creation date
+        const q = query(
+          assetsRef, 
+          where('category', '==', 'audio-music'),
+          orderBy('createdAt', 'desc')
+        );
+        const snapshot = await getDocs(q);
+        const fetchedTracks = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Track[];
+        setTracks(fetchedTracks);
+      } catch (err) {
+        console.error('Failed to fetch music tracks:', err);
+      }
+    };
+
+    fetchTracks();
+  }, [activeGenre]); // Refresh when switching genres if we decide to fetch only activeGenre
+
+  // Filter tracks Locally for responsiveness
+  const filteredTracks = tracks.filter((track) => {
     const matchesGenre = activeGenre === 'all' || track.genre === activeGenre;
     const matchesUsage = activeUsage === 'all' || track.licenseType === activeUsage;
     const matchesSearch = 
       track.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       track.artist.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      track.tags.some((t) => t.toLowerCase().includes(searchQuery.toLowerCase()));
+      track.tags?.some((t) => t.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesGenre && matchesUsage && matchesSearch;
   });
 
   // Play/Pause toggle
-  const togglePlay = (track?: typeof mockTracks[0]) => {
+  const togglePlay = (track?: Track) => {
     if (track && track.id !== currentTrack?.id) {
       setCurrentTrack(track);
       setIsPlaying(true);

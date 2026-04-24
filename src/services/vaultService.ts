@@ -1,3 +1,4 @@
+import { kernelStorage } from '@/kernel/kernelStorage.js';
 
 export interface VaultFile {
   path: string;
@@ -24,7 +25,7 @@ class VaultService {
   }
 
   getVault(userId: string): VaultProject[] {
-    const data = localStorage.getItem(this.getStorageKey(userId));
+    const data = kernelStorage.getItem(this.getStorageKey(userId));
     return data ? JSON.parse(data) : [];
   }
 
@@ -44,7 +45,7 @@ class VaultService {
       });
     }
     
-    localStorage.setItem(this.getStorageKey(userId), JSON.stringify(vault));
+    kernelStorage.setItem(this.getStorageKey(userId), JSON.stringify(vault));
   }
 
   // Auto-mirror logic for IDE files
@@ -78,7 +79,7 @@ class VaultService {
     }
     
     project.updatedAt = new Date().toISOString();
-    localStorage.setItem(this.getStorageKey(userId), JSON.stringify(vault));
+    kernelStorage.setItem(this.getStorageKey(userId), JSON.stringify(vault));
   }
 
   restoreProject(userId: string, projectId: string): VaultProject | undefined {

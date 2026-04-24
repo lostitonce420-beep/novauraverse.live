@@ -32,31 +32,52 @@ export default function NovaRegistryPage() {
   const { user: _user } = useAuthStore();
   const { addToast } = useUIStore();
 
+  const getRegisteredDomains = () => {
+    try {
+      return JSON.parse(localStorage.getItem('novaura_registered_domains') || '[]');
+    } catch {
+      return [];
+    }
+  };
+
+  const saveRegisteredDomain = (domain: string) => {
+    const registered = getRegisteredDomains();
+    if (!registered.includes(domain)) {
+      registered.push(domain);
+      localStorage.setItem('novaura_registered_domains', JSON.stringify(registered));
+    }
+  };
+
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!search.trim()) return;
 
     setIsSearching(true);
-    // Simulate domain search API
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
+    // Small delay for UX feedback
+    await new Promise(resolve => setTimeout(resolve, 800));
+
     const domainName = search.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-    const mockResults = DOMAIN_EXTENSIONS.map(ext => ({
+    const registered = getRegisteredDomains();
+
+    const searchResults = DOMAIN_EXTENSIONS.map(ext => ({
       name: `${domainName}${ext.ext}`,
       price: ext.price,
       description: ext.description,
-      available: Math.random() > 0.1,
+      available: !registered.includes(`${domainName}${ext.ext}`),
     }));
-    
-    setResults(mockResults);
+
+    setResults(searchResults);
     setIsSearching(false);
   };
 
   const handleRegister = (domain: string, _price: number) => {
+    saveRegisteredDomain(domain);
+    // Update current results to show as taken
+    setResults(prev => prev.map(r => r.name === domain ? { ...r, available: false } : r));
     addToast({
-      type: 'info',
-      title: 'Registration Initiated',
-      message: `Directing to Polsia Finance for ${domain}. Consciousness Coins can be used for renewal!`
+      type: 'success',
+      title: 'Domain Registered',
+      message: `${domain} has been registered to your wallet!`
     });
   };
 

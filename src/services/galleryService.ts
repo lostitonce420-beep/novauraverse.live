@@ -1,4 +1,5 @@
 import type { GallerySubmission, GalleryComment, GallerySubmissionType, GalleryContentRating } from '@/types';
+import { kernelStorage } from '@/kernel/kernelStorage.js';
 
 const STORAGE_KEYS = {
   submissions: 'novaura_gallery_submissions',
@@ -7,17 +8,17 @@ const STORAGE_KEYS = {
 
 // Initialize storage
 export const initializeGalleryStorage = () => {
-  if (!localStorage.getItem(STORAGE_KEYS.submissions)) {
-    localStorage.setItem(STORAGE_KEYS.submissions, JSON.stringify([]));
+  if (!kernelStorage.getItem(STORAGE_KEYS.submissions)) {
+    kernelStorage.setItem(STORAGE_KEYS.submissions, JSON.stringify([]));
   }
-  if (!localStorage.getItem(STORAGE_KEYS.comments)) {
-    localStorage.setItem(STORAGE_KEYS.comments, JSON.stringify([]));
+  if (!kernelStorage.getItem(STORAGE_KEYS.comments)) {
+    kernelStorage.setItem(STORAGE_KEYS.comments, JSON.stringify([]));
   }
 };
 
 // Get all submissions
 export const getAllSubmissions = (): GallerySubmission[] => {
-  const data = localStorage.getItem(STORAGE_KEYS.submissions);
+  const data = kernelStorage.getItem(STORAGE_KEYS.submissions);
   return data ? JSON.parse(data) : [];
 };
 
@@ -69,7 +70,7 @@ export const getSubmission = (id: string): GallerySubmission | null => {
   const submission = submissions.find((s) => s.id === id);
   if (submission) {
     submission.views++;
-    localStorage.setItem(STORAGE_KEYS.submissions, JSON.stringify(submissions));
+    kernelStorage.setItem(STORAGE_KEYS.submissions, JSON.stringify(submissions));
   }
   return submission || null;
 };
@@ -106,7 +107,7 @@ export const createSubmission = (
   };
 
   submissions.push(newSubmission);
-  localStorage.setItem(STORAGE_KEYS.submissions, JSON.stringify(submissions));
+  kernelStorage.setItem(STORAGE_KEYS.submissions, JSON.stringify(submissions));
 
   return newSubmission;
 };
@@ -119,7 +120,7 @@ export const approveSubmission = (id: string): void => {
     submission.status = 'approved';
     submission.approvedAt = new Date().toISOString();
     submission.updatedAt = new Date().toISOString();
-    localStorage.setItem(STORAGE_KEYS.submissions, JSON.stringify(submissions));
+    kernelStorage.setItem(STORAGE_KEYS.submissions, JSON.stringify(submissions));
   }
 };
 
@@ -131,7 +132,7 @@ export const rejectSubmission = (id: string, reason: string): void => {
     submission.status = 'rejected';
     submission.rejectionReason = reason;
     submission.updatedAt = new Date().toISOString();
-    localStorage.setItem(STORAGE_KEYS.submissions, JSON.stringify(submissions));
+    kernelStorage.setItem(STORAGE_KEYS.submissions, JSON.stringify(submissions));
   }
 };
 
@@ -139,7 +140,7 @@ export const rejectSubmission = (id: string, reason: string): void => {
 export const deleteSubmission = (id: string): void => {
   const submissions = getAllSubmissions();
   const filtered = submissions.filter((s) => s.id !== id);
-  localStorage.setItem(STORAGE_KEYS.submissions, JSON.stringify(filtered));
+  kernelStorage.setItem(STORAGE_KEYS.submissions, JSON.stringify(filtered));
 };
 
 // Like submission
@@ -148,7 +149,7 @@ export const likeSubmission = (id: string): void => {
   const submission = submissions.find((s) => s.id === id);
   if (submission) {
     submission.likes++;
-    localStorage.setItem(STORAGE_KEYS.submissions, JSON.stringify(submissions));
+    kernelStorage.setItem(STORAGE_KEYS.submissions, JSON.stringify(submissions));
   }
 };
 
@@ -158,13 +159,13 @@ export const unlikeSubmission = (id: string): void => {
   const submission = submissions.find((s) => s.id === id);
   if (submission && submission.likes > 0) {
     submission.likes--;
-    localStorage.setItem(STORAGE_KEYS.submissions, JSON.stringify(submissions));
+    kernelStorage.setItem(STORAGE_KEYS.submissions, JSON.stringify(submissions));
   }
 };
 
 // Get comments for submission
 export const getSubmissionComments = (submissionId: string): GalleryComment[] => {
-  const data = localStorage.getItem(STORAGE_KEYS.comments);
+  const data = kernelStorage.getItem(STORAGE_KEYS.comments);
   const comments = data ? JSON.parse(data) : [];
   return comments
     .filter((c: GalleryComment) => c.submissionId === submissionId)
@@ -173,7 +174,7 @@ export const getSubmissionComments = (submissionId: string): GalleryComment[] =>
 
 // Add comment
 export const addComment = (submissionId: string, authorId: string, content: string): GalleryComment => {
-  const comments = JSON.parse(localStorage.getItem(STORAGE_KEYS.comments) || '[]');
+  const comments = JSON.parse(kernelStorage.getItem(STORAGE_KEYS.comments) || '[]');
   const submissions = getAllSubmissions();
 
   const newComment: GalleryComment = {
@@ -186,13 +187,13 @@ export const addComment = (submissionId: string, authorId: string, content: stri
   };
 
   comments.push(newComment);
-  localStorage.setItem(STORAGE_KEYS.comments, JSON.stringify(comments));
+  kernelStorage.setItem(STORAGE_KEYS.comments, JSON.stringify(comments));
 
   // Update submission comment count
   const submission = submissions.find((s) => s.id === submissionId);
   if (submission) {
     submission.comments++;
-    localStorage.setItem(STORAGE_KEYS.submissions, JSON.stringify(submissions));
+    kernelStorage.setItem(STORAGE_KEYS.submissions, JSON.stringify(submissions));
   }
 
   return newComment;

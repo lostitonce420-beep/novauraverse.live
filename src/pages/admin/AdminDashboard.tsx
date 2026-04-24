@@ -13,8 +13,7 @@ import {
   getPendingAssets, 
   approveAsset, 
   rejectAsset,
-  getStoredOrders,
-  initializeStorage 
+  getStoredOrders
 } from '@/services/marketService';
 import { useUIStore } from '@/stores/uiStore';
 import type { Asset, Order } from '@/types';
@@ -28,15 +27,22 @@ export default function AdminDashboard() {
   const [rejectingAssetId, setRejectingAssetId] = useState<string | null>(null);
 
   // Define loadData with useCallback BEFORE useEffect hooks that use it
-  const loadData = useCallback(() => {
-    const allAssets = getAssets;
-    setAssets(allAssets);
-    setPendingAssets(getPendingAssets());
-    setOrders(getStoredOrders());
+  const loadData = useCallback(async () => {
+    try {
+      const [allAssets, pending, orders] = await Promise.all([
+        getAssets(),
+        getPendingAssets(),
+        getStoredOrders()
+      ]);
+      setAssets(allAssets);
+      setPendingAssets(pending);
+      setOrders(orders);
+    } catch (error) {
+      console.error('Failed to load admin data:', error);
+    }
   }, []);
 
   useEffect(() => {
-    initializeStorage();
     loadData();
   }, [loadData]);
 
@@ -75,30 +81,46 @@ export default function AdminDashboard() {
     },
   ];
 
-  const handleApprove = (assetId: string) => {
-    approveAsset(assetId);
-    addToast({
-      type: 'success',
-      title: 'Asset approved',
-      message: 'The asset has been approved and is now live.',
-    });
-    loadData();
+  const handleApprove = async (assetId: string) => {
+    try {
+      await approveAsset(assetId);
+      addToast({
+        type: 'success',
+        title: 'Asset approved',
+        message: 'The asset has been approved and is now live.',
+      });
+      loadData();
+    } catch (error) {
+      addToast({
+        type: 'error',
+        title: 'Failed to approve',
+        message: 'Could not approve asset. Please try again.',
+      });
+    }
   };
 
-  const handleReject = (assetId: string) => {
+  const handleReject = async (assetId: string) => {
     if (!rejectionReason.trim()) {
       setRejectingAssetId(assetId);
       return;
     }
-    rejectAsset(assetId, rejectionReason);
-    addToast({
-      type: 'info',
-      title: 'Asset rejected',
-      message: 'The asset has been rejected.',
-    });
-    setRejectingAssetId(null);
-    setRejectionReason('');
-    loadData();
+    try {
+      await rejectAsset(assetId, rejectionReason);
+      addToast({
+        type: 'info',
+        title: 'Asset rejected',
+        message: 'The asset has been rejected.',
+      });
+      setRejectingAssetId(null);
+      setRejectionReason('');
+      loadData();
+    } catch (error) {
+      addToast({
+        type: 'error',
+        title: 'Failed to reject',
+        message: 'Could not reject asset. Please try again.',
+      });
+    }
   };
 
   return (

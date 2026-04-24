@@ -395,7 +395,7 @@ export function NotificationPanel({ isOpen, onClose, triggerRef }: NotificationP
             variant="ghost"
             size="icon"
             className="h-8 w-8 text-text-muted hover:text-text-primary"
-            onClick={() => navigate('/settings/notifications')}
+            onClick={() => navigate('/notifications')}
             title="Notification settings"
           >
             <Settings className="w-4 h-4" />

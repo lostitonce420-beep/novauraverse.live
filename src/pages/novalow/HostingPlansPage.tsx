@@ -16,7 +16,6 @@ const hostingTiers = [
     name: 'Starter', 
     price: '$7.99', 
     desc: 'Perfect for personal sites', 
-    domains: '1 .xyz domain included',
     features: [
       '5GB SSD Storage', 
       '100GB/mo Bandwidth', 
@@ -28,7 +27,6 @@ const hostingTiers = [
     name: 'Pro', 
     price: '$15.99', 
     desc: 'For growing businesses', 
-    domains: '1 .xyz domain included',
     features: [
       '25GB SSD Storage', 
       '500GB/mo Bandwidth', 
@@ -41,7 +39,6 @@ const hostingTiers = [
     name: 'Business', 
     price: '$39.99', 
     desc: 'For high-traffic apps', 
-    domains: '3 .xyz domains included',
     features: [
       '100GB SSD Storage', 
       '2TB/mo Bandwidth', 
@@ -181,7 +178,6 @@ export default function HostingPlansPage() {
                 <h4 className="font-heading font-semibold text-lg mb-1">{tier.name}</h4>
                 <p className="text-sm text-text-secondary mb-4">{tier.desc}</p>
                 <p className="font-heading font-bold text-3xl text-neon-cyan mb-2">{tier.price}<span className="text-sm font-normal opacity-60">/mo</span></p>
-                <p className="text-xs text-text-secondary mb-4">{tier.domains}</p>
                 <div className="space-y-2 mb-6">
                   {tier.features.map((f) => (
                     <div key={f} className="flex items-center gap-2">

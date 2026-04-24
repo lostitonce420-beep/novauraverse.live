@@ -307,38 +307,57 @@ export interface CheckoutResponse {
   paymentIntent?: any; // Stripe payment intent
 }
 
+const API_BASE = import.meta.env.VITE_BACKEND_URL || '/api';
+
 export const submitCheckout = async (
   payload: CheckoutPayload
 ): Promise<CheckoutResponse> => {
-  // TODO: Replace with actual API call to Polsia backend
-  // Example:
-  // const response = await fetch('/api/checkout', {
-  //   method: 'POST',
-  //   headers: { 'Content-Type': 'application/json' },
-  //   body: JSON.stringify(payload),
-  // });
-  // return response.json();
-  
-  // For now, simulate API call and store in localStorage
-  await new Promise(resolve => setTimeout(resolve, 1500));
-  
-  // Store in localStorage for demo purposes
-  const transactions = JSON.parse(localStorage.getItem('novaura_transactions') || '[]');
-  transactions.push(payload);
-  localStorage.setItem('novaura_transactions', JSON.stringify(transactions));
-  
-  return {
-    success: true,
-    transactionId: payload.transactionId,
-    orderId: `ORD-${payload.transactionId.split('-')[1]}`,
-  };
+  try {
+    // Call the real Stripe checkout backend
+    const response = await fetch(`${API_BASE}/stripe/checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: payload.userId,
+        items: [{
+          asset: {
+            id: payload.assetId,
+            title: payload.transactionId, // populated upstream
+            price: payload.purchasePrice,
+            creatorId: payload.creatorId,
+            type: 'asset',
+          },
+          customPrice: payload.purchasePrice,
+        }],
+        checkoutPayload: payload,
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: 'Unknown error' }));
+      return { success: false, error: err.error || 'Checkout failed' };
+    }
+
+    const data = await response.json();
+
+    // Backend returns a Stripe Checkout URL — redirect user
+    if (data.url) {
+      window.location.href = data.url;
+      return { success: true, transactionId: payload.transactionId };
+    }
+
+    return { success: true, transactionId: payload.transactionId, orderId: data.orderId };
+  } catch (error: any) {
+    console.error('[Checkout] Failed to reach backend:', error);
+    return { success: false, error: error.message || 'Network error' };
+  }
 };
 
 /**
  * Get transaction by ID
  */
 export const getTransaction = (transactionId: string): CheckoutPayload | null => {
-  const transactions = JSON.parse(localStorage.getItem('novaura_transactions') || '[]');
+  const transactions = JSON.parse(kernelStorage.getItem('novaura_transactions') || '[]');
   return transactions.find((t: CheckoutPayload) => t.transactionId === transactionId) || null;
 };
 
@@ -346,7 +365,7 @@ export const getTransaction = (transactionId: string): CheckoutPayload | null =>
  * Get all transactions for a user
  */
 export const getUserTransactions = (userId: string): CheckoutPayload[] => {
-  const transactions = JSON.parse(localStorage.getItem('novaura_transactions') || '[]');
+  const transactions = JSON.parse(kernelStorage.getItem('novaura_transactions') || '[]');
   return transactions.filter((t: CheckoutPayload) => t.userId === userId);
 };
 

@@ -1,3 +1,4 @@
+import { kernelStorage } from '../kernel/kernelStorage.js';
 export interface WorkflowStep {
   id: string;
   type: 'prompt' | 'audit' | 'test' | 'deploy' | 'custom';
@@ -25,7 +26,7 @@ class WorkflowService {
   }
 
   getWorkflows(userId: string): WorkflowPipeline[] {
-    const data = localStorage.getItem(this.getStorageKey(userId));
+    const data = kernelStorage.getItem(this.getStorageKey(userId));
     if (!data) {
       // Return default Genesis pipelines
       return [this.getGenesisPipeline()];
@@ -62,13 +63,13 @@ class WorkflowService {
       workflows.push(workflow);
     }
     
-    localStorage.setItem(this.getStorageKey(userId), JSON.stringify(workflows));
+    kernelStorage.setItem(this.getStorageKey(userId), JSON.stringify(workflows));
   }
 
   deleteWorkflow(userId: string, id: string) {
     const workflows = this.getWorkflows(userId);
     const filtered = workflows.filter(w => w.id !== id);
-    localStorage.setItem(this.getStorageKey(userId), JSON.stringify(filtered));
+    kernelStorage.setItem(this.getStorageKey(userId), JSON.stringify(filtered));
   }
 }
 

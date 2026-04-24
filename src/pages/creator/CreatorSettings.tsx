@@ -1,14 +1,18 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { User, Twitter, Github, Globe, DollarSign } from 'lucide-react';
+import { User, Twitter, Github, Globe, DollarSign, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuthStore } from '@/stores/authStore';
+import { useUIStore } from '@/stores/uiStore';
+import { connectStripeAccount } from '@/services/marketService';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function CreatorSettings() {
   const { user } = useAuthStore();
+  const { addToast } = useUIStore();
   const [activeTab, setActiveTab] = useState('profile');
+  const [isConnecting, setIsConnecting] = useState(false);
 
   return (
     <div>
@@ -86,24 +90,56 @@ export default function CreatorSettings() {
               Payout Settings
             </h2>
 
-            <div className="p-8 border-2 border-dashed border-white/10 rounded-xl text-center mb-6">
-              <DollarSign className="w-12 h-12 text-white/10 mx-auto mb-4" />
-              <p className="text-text-secondary mb-2">Stripe Connect Required</p>
-              <p className="text-text-muted text-sm mb-4">
-                Connect your Stripe account to receive payouts
-              </p>
-              <Button className="bg-gradient-rgb text-void font-bold">
-                Connect Stripe
-              </Button>
-            </div>
+            {user?.stripeConnectStatus === 'active' ? (
+              <div className="p-8 border-2 border-neon-lime/30 bg-neon-lime/5 rounded-xl flex items-center gap-6 mb-6">
+                <div className="w-12 h-12 rounded-full bg-neon-lime/20 flex items-center justify-center">
+                  <Check className="w-6 h-6 text-neon-lime" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-neon-lime mb-1">Stripe Connected</h3>
+                  <p className="text-text-secondary text-sm">Your payouts are fully active and mapped directly to your bank account.</p>
+                </div>
+                <div className="ml-auto">
+                  <Button variant="outline" className="border-white/20">
+                    Dashboard
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="p-8 border-2 border-dashed border-white/10 rounded-xl text-center mb-6">
+                <DollarSign className="w-12 h-12 text-white/10 mx-auto mb-4" />
+                <p className="text-text-secondary mb-2">Stripe Connect Required</p>
+                <p className="text-text-muted text-sm mb-4">
+                  Connect your debit card or bank account to instantly receive 90% of your sales.
+                </p>
+                <Button 
+                  disabled={isConnecting}
+                  onClick={async () => {
+                    if (!user) return;
+                    setIsConnecting(true);
+                    try {
+                      const url = await connectStripeAccount(user.id);
+                      window.location.href = url; // Redirect to Stripe Onboarding
+                    } catch (error) {
+                      addToast({ type: 'error', title: 'Connection Failed', message: 'Could not reach the secure payment gateway. Check your internet or contact support.' });
+                      setIsConnecting(false);
+                    }
+                  }}
+                  className="bg-gradient-rgb text-void font-bold"
+                >
+                  {isConnecting ? 'Connecting...' : 'Connect Stripe'}
+                </Button>
+              </div>
+            )}
 
             <div className="space-y-4">
-              <h3 className="font-medium text-text-primary">Payout Schedule</h3>
-              <div className="p-4 bg-void rounded-lg">
-                <p className="text-text-secondary text-sm">
-                  Royalties are held for 14 days after each sale, then become available for payout. 
-                  Payouts are processed automatically on the 1st of each month.
-                </p>
+              <h3 className="font-medium text-text-primary">Platform Payout Structure</h3>
+              <div className="p-4 bg-void rounded-lg border border-white/5">
+                <ul className="text-text-secondary text-sm space-y-2">
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-neon-cyan" /> You keep exactly <b>90%</b> of every sale.</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-neon-cyan" /> The platform fee is locked at <b>10%</b> and splits automatically.</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-neon-cyan" /> Funds arrive directly to your connected Stripe account instantly per transaction.</li>
+                </ul>
               </div>
             </div>
           </div>

@@ -1,5 +1,6 @@
 import { workflowService } from './workflowService';
 import { aiOrchestrator } from './aiOrchestrator';
+import { kernelStorage } from '../kernel/kernelStorage.js';
 
 export interface ScheduledTask {
   id: string;
@@ -20,7 +21,7 @@ class AuraScheduler {
   private getTaskKey(userId: string) { return `${STORAGE_KEYS.tasks}${userId}`; }
 
   getTasks(userId: string): ScheduledTask[] {
-    const data = localStorage.getItem(this.getTaskKey(userId));
+    const data = kernelStorage.getItem(this.getTaskKey(userId));
     return data ? JSON.parse(data) : [];
   }
 
@@ -29,7 +30,7 @@ class AuraScheduler {
     const existingIndex = tasks.findIndex(t => t.id === task.id);
     if (existingIndex >= 0) tasks[existingIndex] = task;
     else tasks.push(task);
-    localStorage.setItem(this.getTaskKey(userId), JSON.stringify(tasks));
+    kernelStorage.setItem(this.getTaskKey(userId), JSON.stringify(tasks));
     
     // Restart if active
     if (task.isActive) this.startTask(userId, task);

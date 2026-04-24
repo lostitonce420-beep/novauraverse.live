@@ -14,7 +14,8 @@ import {
   Settings,
   Image as ImageIcon,
   MessageSquare,
-  User
+  User,
+  Mail
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
@@ -46,14 +47,32 @@ export default function Navbar() {
     navigate('/');
   };
 
+  /*
+    ⚠️  NAV LINKS ARE CORRECTLY CONFIGURED - DO NOT CHANGE  ⚠️
+    
+    Platform  = /platform  (AI Social Platform - NOT marketplace)
+    Market    = /browse    (Asset marketplace)
+    NovaLow   = /novalow   (Domains & hosting)
+    
+    These have been fixed multiple times. Don't break them again!
+  */
   const navLinks = [
-    { label: 'Discourse', href: '/hub' },
+    { label: 'Platform', href: '/platform' },
     { label: 'Market', href: '/browse' },
+    { label: 'NovaLow', href: '/novalow' },
+    { label: 'Mail', href: '/webmail' },
+    { label: 'Discourse', href: '/hub' },
     { label: 'Domains', href: '/domains' },
     { label: 'Site Builder', href: '/builder' },
     { label: 'Strategist', href: '/strategist' },
+    { label: 'Shop', href: '/shop' },
     { label: 'Games', href: '/games' },
     { label: 'Chat', href: '/chat' },
+    { label: 'Voice Studio', href: '/voice-studio' },
+    { label: 'Music Studio', href: '/music-studio' },
+    { label: 'AI Studio', href: '/ai-studio' },
+    { label: 'Practice', href: '/practice' },
+    { label: 'OS', href: '/os' },
   ];
 
   return (
@@ -79,13 +98,23 @@ export default function Navbar() {
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center gap-1">
             {navLinks.map((link) => (
-              <Link
-                key={link.label}
-                to={link.href}
-                className="px-4 py-2 text-text-secondary hover:text-text-primary transition-colors text-sm font-medium rounded-lg hover:bg-white/5"
-              >
-                {link.label}
-              </Link>
+              link.label === 'OS' ? (
+                <a
+                  key={link.label}
+                  href="/os/"
+                  className="px-4 py-2 text-text-secondary hover:text-text-primary transition-colors text-sm font-medium rounded-lg hover:bg-white/5"
+                >
+                  {link.label}
+                </a>
+              ) : (
+                <Link
+                  key={link.label}
+                  to={link.href}
+                  className="px-4 py-2 text-text-secondary hover:text-text-primary transition-colors text-sm font-medium rounded-lg hover:bg-white/5"
+                >
+                  {link.label}
+                </Link>
+              )
             ))}
           </nav>
 
@@ -103,6 +132,19 @@ export default function Navbar() {
 
             {/* Notifications Bell */}
             {isAuthenticated && <NotificationBell />}
+
+            {/* Mail */}
+            {isAuthenticated && (
+              <Link to="/webmail">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-text-secondary hover:text-neon-cyan hover:bg-neon-cyan/10"
+                >
+                  <Mail className="w-5 h-5" />
+                </Button>
+              </Link>
+            )}
 
             {/* Cart */}
             <Link to="/cart">
@@ -196,6 +238,15 @@ export default function Navbar() {
                         </Link>
                         
                         <Link
+                          to="/webmail"
+                          className="flex items-center gap-3 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-white/5 rounded-lg transition-colors"
+                          onClick={() => setIsProfileOpen(false)}
+                        >
+                          <Mail className="w-4 h-4" />
+                          Webmail
+                        </Link>
+                        
+                        <Link
                           to="/messages"
                           className="flex items-center gap-3 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-white/5 rounded-lg transition-colors"
                           onClick={() => setIsProfileOpen(false)}
@@ -240,9 +291,16 @@ export default function Navbar() {
                           Settings
                         </Link>
                         
+                        {/* Account Info - displayed near logout */}
+                        <div className="mt-3 pt-3 border-t border-white/5 px-3 pb-2">
+                          <p className="text-xs text-text-tertiary uppercase tracking-wider mb-1">Signed in as</p>
+                          <p className="text-sm font-medium text-text-primary truncate">{user?.username}</p>
+                          <p className="text-xs text-text-secondary truncate">{user?.email}</p>
+                        </div>
+                        
                         <button
                           onClick={handleLogout}
-                          className="w-full flex items-center gap-3 px-3 py-2 text-sm text-neon-red hover:text-neon-red hover:bg-neon-red/10 rounded-lg transition-colors mt-2 border-t border-white/5 pt-2"
+                          className="w-full flex items-center gap-3 px-3 py-2 text-sm text-neon-red hover:text-neon-red hover:bg-neon-red/10 rounded-lg transition-colors mt-1 border-t border-white/5 pt-2"
                         >
                           <LogOut className="w-4 h-4" />
                           Logout
@@ -294,15 +352,26 @@ export default function Navbar() {
           >
             <div className="px-4 py-4 space-y-2">
               {navLinks.map((link) => (
-                <Link
-                  key={link.label}
-                  to={link.href}
-                  className="block px-4 py-3 text-text-secondary hover:text-text-primary hover:bg-white/5 rounded-lg transition-colors"
-                  onClick={() => toggleMobileMenu()}
-                >
-                  {link.label}
-                </Link>
-              ))}
+                link.label === 'OS' ? (
+                  <a
+                    key={link.label}
+                    href="/os/"
+                    className="block px-4 py-3 text-text-secondary hover:text-text-primary hover:bg-white/5 rounded-lg transition-colors"
+                    onClick={() => toggleMobileMenu()}
+                  >
+                    {link.label}
+                  </a>
+                ) : (
+                  <Link
+                    key={link.label}
+                    to={link.href}
+                    className="block px-4 py-3 text-text-secondary hover:text-text-primary hover:bg-white/5 rounded-lg transition-colors"
+                    onClick={() => toggleMobileMenu()}
+                  >
+                    {link.label}
+                  </Link>
+                )
+                ))}
               
               {!isAuthenticated && (
                 <div className="pt-4 border-t border-white/5 space-y-2">

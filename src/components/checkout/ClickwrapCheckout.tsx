@@ -21,6 +21,7 @@ import { useUIStore } from '@/stores/uiStore';
 import { formatPrice } from '@/utils/format';
 import type { Asset, LicenseTier } from '@/types';
 import { getLicenseSpecificTerms } from '@/legal/eulaBoilerplate';
+import { kernelStorage } from '../@/kernel/kernelStorage.js';
 
 interface ClickwrapCheckoutProps {
   asset: Asset;
@@ -109,14 +110,14 @@ export default function ClickwrapCheckout({ asset, isOpen, onClose, onComplete }
     await new Promise(resolve => setTimeout(resolve, 1500));
     
     // Store agreement in localStorage for user reference
-    const userAgreements = JSON.parse(localStorage.getItem('novaura_agreements') || '[]');
+    const userAgreements = JSON.parse(kernelStorage.getItem('novaura_agreements') || '[]');
     userAgreements.push({
       ...payload,
       assetTitle: asset.title,
       creatorName: asset.creator?.username,
       savedAt: new Date().toISOString(),
     });
-    localStorage.setItem('novaura_agreements', JSON.stringify(userAgreements));
+    kernelStorage.setItem('novaura_agreements', JSON.stringify(userAgreements));
     
     // Send agreement copy to user (simulated)
     setAgreementSent(true);
@@ -377,7 +378,7 @@ export default function ClickwrapCheckout({ asset, isOpen, onClose, onComplete }
                 <p className="text-xs text-text-muted text-center">
                   NovAura Market is a neutral marketplace and ledger provider. 
                   We are not a party to this agreement. 
-                  <a href="/legal/indemnification" className="text-neon-cyan hover:underline ml-1">
+                  <a href="/legal/terms" className="text-neon-cyan hover:underline ml-1">
                     Read our indemnification policy.
                   </a>
                 </p>

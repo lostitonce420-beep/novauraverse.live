@@ -7,12 +7,14 @@ import {
   DollarSign, 
   Settings,
   Plus,
-  Sparkles
+  Sparkles,
+  Layers
 } from 'lucide-react';
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/creator/dashboard' },
   { icon: Package, label: 'My Assets', href: '/creator/assets' },
+  { icon: Layers, label: 'TCG Card Forge', href: '/creator/tcg-forge' },
   { icon: DollarSign, label: 'Earnings', href: '/creator/earnings' },
   { icon: Settings, label: 'Settings', href: '/creator/settings' },
 ];

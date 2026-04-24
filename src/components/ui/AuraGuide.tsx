@@ -18,10 +18,32 @@ import { AuraAvatar, type AuraEmotion } from './AuraAvatar';
 
 const AURA_CONTEXTS: Record<string, string> = {
   '/browse': 'The user is currently browsing assets. They might be looking for something specific or just exploring.',
-  '/upload': 'The user is uploading a new asset. Help them with pricing, license choice, or foundation linking.',
+  '/creator/assets/new': 'The user is uploading a new asset. Help them with pricing, license choice, or foundation linking.',
+  '/upload': 'Legacy upload path in use. Guide them to continue with /creator/assets/new without losing flow.',
   '/reader': 'The user is in the Dev Aura Reader searching external platforms for free assets.',
   '/checkout': 'The user is about to pay. Reassure them about the Smart Royalty system and their fair stake.',
   'default': 'The user is on the NovAura platform. General helpfulness is key.'
+};
+
+const LOCAL_DEFAULTS = {
+  ollama: 'http://localhost:11434',
+  lmstudio: 'http://localhost:1234',
+} as const;
+
+const ensureHttpProtocol = (value: string): string => {
+  if (/^https?:\/\//i.test(value)) return value;
+  return `http://${value}`;
+};
+
+const normalizeLocalBaseUrl = (endpoint: string, provider: 'ollama' | 'lmstudio'): string => {
+  const raw = endpoint.trim();
+  const initial = raw ? ensureHttpProtocol(raw) : LOCAL_DEFAULTS[provider];
+
+  return initial
+    .replace(/[?#].*$/, '')
+    .replace(/\/api\/(?:chat|generate|tags)$/i, '')
+    .replace(/\/v1(?:\/chat\/completions|\/models)?$/i, '')
+    .replace(/\/+$/g, '');
 };
 
 export const AuraGuide = () => {
@@ -64,7 +86,10 @@ export const AuraGuide = () => {
   useEffect(() => {
     setCanClaim(isClaimAvailable());
     if (isSettingsOpen && user) {
-      setLedger(economyService.getLedger(user.id));
+      void economyService
+        .getLedger(user.id)
+        .then((entries) => setLedger(entries))
+        .catch(() => setLedger([]));
     }
   }, [user?.lastDailyClaim, isSettingsOpen, user?.id]);
 
@@ -74,22 +99,50 @@ export const AuraGuide = () => {
     }
   }, [provider, localEndpoint, isOpen]);
 
+  const handleProviderChange = (nextProvider: AIProvider) => {
+    setProvider(nextProvider);
+
+    if (nextProvider === 'ollama') {
+      if (!localEndpoint || /:1234(?:\/|$)/i.test(localEndpoint) || /\/v1(?:\/|$)/i.test(localEndpoint)) {
+        setLocalEndpoint(LOCAL_DEFAULTS.ollama);
+      }
+    }
+
+    if (nextProvider === 'lmstudio') {
+      if (!localEndpoint || /:11434(?:\/|$)/i.test(localEndpoint) || /\/api(?:\/|$)/i.test(localEndpoint)) {
+        setLocalEndpoint(LOCAL_DEFAULTS.lmstudio);
+      }
+    }
+  };
+
   const checkProxyStatus = async () => {
-    setProxyStatus('checking');
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2000);
-      
-      await fetch(localEndpoint, { 
-        method: 'HEAD', 
-        mode: 'no-cors',
-        signal: controller.signal 
-      });
-      
-      clearTimeout(timeoutId);
+    if (provider !== 'ollama' && provider !== 'lmstudio') {
       setProxyStatus('online');
-    } catch (err) {
+      return;
+    }
+
+    setProxyStatus('checking');
+
+    const baseUrl = normalizeLocalBaseUrl(localEndpoint, provider);
+    const probeUrl = provider === 'ollama' ? `${baseUrl}/api/tags` : `${baseUrl}/v1/models`;
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 3000);
+
+    try {
+      const response = await fetch(probeUrl, {
+        method: 'GET',
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Status ${response.status}`);
+      }
+
+      setProxyStatus('online');
+    } catch {
       setProxyStatus('offline');
+    } finally {
+      window.clearTimeout(timeoutId);
     }
   };
 
@@ -348,7 +401,7 @@ export const AuraGuide = () => {
                           {(['gemini', 'claude', 'openai'] as AIProvider[]).map(p => (
                             <button
                               key={p}
-                              onClick={() => setProvider(p)}
+                              onClick={() => handleProviderChange(p)}
                               className={`py-2 rounded-lg text-[9px] font-black border transition-all ${provider === p ? 'bg-neon-cyan/10 border-neon-cyan text-neon-cyan' : 'bg-void border-white/5 text-text-muted hover:border-white/20'}`}
                             >
                               {p.toUpperCase()}
@@ -359,7 +412,7 @@ export const AuraGuide = () => {
                           {(['kimi', 'ollama', 'lmstudio'] as AIProvider[]).map(p => (
                             <button
                               key={p}
-                              onClick={() => setProvider(p)}
+                              onClick={() => handleProviderChange(p)}
                               className={`flex flex-col items-center gap-0.5 py-2 rounded-lg text-[9px] font-black border transition-all relative ${provider === p ? 'bg-neon-cyan/10 border-neon-cyan text-neon-cyan' : 'bg-void border-white/5 text-text-muted hover:border-white/20'}`}
                             >
                               {p.toUpperCase()}
@@ -417,7 +470,7 @@ export const AuraGuide = () => {
                           <Input
                             value={localEndpoint}
                             onChange={(e) => setLocalEndpoint(e.target.value)}
-                            placeholder="http://localhost:11434/..."
+                            placeholder={provider === 'lmstudio' ? 'http://localhost:1234 or http://localhost:1234/v1/chat/completions' : 'http://localhost:11434 or http://localhost:11434/api/chat'}
                             className="bg-void border-white/5 h-10 text-xs focus:border-neon-cyan/50 transition-colors"
                           />
                         </div>

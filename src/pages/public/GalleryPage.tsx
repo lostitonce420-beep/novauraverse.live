@@ -24,7 +24,8 @@ import { Input } from '@/components/ui/input';
 import { useAuthStore } from '@/stores/authStore';
 import { useUIStore } from '@/stores/uiStore';
 import { getApprovedSubmissions, submissionTypeLabels, initializeGalleryStorage } from '@/services/galleryService';
-import { updateUserPreferences, verifyUserAge } from '@/services/userStorage';
+import { db } from '@/config/firebase';
+import { doc, updateDoc } from 'firebase/firestore';
 import { usePioneerBadgeStore } from '@/stores/pioneerBadgeStore';
 import { SEOMeta } from '@/components/seo/SEOMeta';
 import type { GallerySubmission, GallerySubmissionType } from '@/types';
@@ -63,12 +64,12 @@ export default function GalleryPage() {
     setSubmissions(getApprovedSubmissions(options));
   };
 
-  const handleNsfwToggle = () => {
+  const handleNsfwToggle = async () => {
     if (!showNsfw) {
       // Trying to enable NSFW
       if (user?.preferences?.ageVerified) {
         setShowNsfw(true);
-        updateUserPreferences(user.id, { showNsfw: true });
+        await updateDoc(doc(db, 'users', user.id), { 'preferences.showNsfw': true });
       } else {
         setShowAgeVerify(true);
       }
@@ -76,12 +77,12 @@ export default function GalleryPage() {
       // Disabling NSFW
       setShowNsfw(false);
       if (user) {
-        updateUserPreferences(user.id, { showNsfw: false });
+        await updateDoc(doc(db, 'users', user.id), { 'preferences.showNsfw': false });
       }
     }
   };
 
-  const handleAgeVerification = () => {
+  const handleAgeVerification = async () => {
     if (!ageConfirmed) {
       addToast({
         type: 'error',
@@ -92,8 +93,10 @@ export default function GalleryPage() {
     }
 
     if (user) {
-      verifyUserAge(user.id);
-      updateUserPreferences(user.id, { showNsfw: true });
+      await updateDoc(doc(db, 'users', user.id), { 
+        'preferences.ageVerified': true,
+        'preferences.showNsfw': true 
+      });
     }
     setShowNsfw(true);
     setShowAgeVerify(false);

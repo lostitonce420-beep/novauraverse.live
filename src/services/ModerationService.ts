@@ -1,4 +1,5 @@
 import { mailService } from './mailService';
+import { kernelStorage } from '@/kernel/kernelStorage.js';
 
 export type StrikeSeverity = 1 | 2 | 3 | 4;
 
@@ -69,14 +70,14 @@ class ModerationService {
   }
 
   private getAllStrikes(): Record<string, ModerationStrike[]> {
-    const data = localStorage.getItem(this.STORAGE_KEY);
+    const data = kernelStorage.getItem(this.STORAGE_KEY);
     return data ? JSON.parse(data) : {};
   }
 
   private saveStrikes(userId: string, strikes: ModerationStrike[]) {
     const all = this.getAllStrikes();
     all[userId] = strikes;
-    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(all));
+    kernelStorage.setItem(this.STORAGE_KEY, JSON.stringify(all));
   }
 }
 

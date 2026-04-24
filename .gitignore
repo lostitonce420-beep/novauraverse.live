@@ -1,3 +1,20 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️  AUDIT REMINDER: RECORD ALL FILE OPERATIONS IN AUDIT_LOG.json
+# 
+# After ANY file operation (create, move, delete, update):
+# 1. Add entry to AUDIT_LOG.json with timestamp, action, file path, reason
+# 2. Commit both the change AND the audit log update together
+# 
+# Format:
+#   {
+#     "timestamp": "2026-04-01T20:30:00-05:00",
+#     "action": "MOVED|DELETED|CREATED|UPDATED",
+#     "file": "path/to/file",
+#     "reason": "why this was done",
+#     "performed_by": "who did it"
+#   }
+# ═══════════════════════════════════════════════════════════════════════════════
+
 # Dependencies
 node_modules/
 **/node_modules/
@@ -5,7 +22,7 @@ node_modules/
 .pnp.js
 
 # Build output
-dist/
+# dist/  # REMOVED: We need dist in repo for deployment
 dist-ssr/
 build/
 

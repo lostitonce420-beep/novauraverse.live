@@ -1,5 +1,6 @@
 import { vaultService } from './vaultService';
 import { aiOrchestrator } from './aiOrchestrator';
+import { kernelStorage } from '@/kernel/kernelStorage.js';
 
 export interface AuditReport {
   id: string;
@@ -48,11 +49,11 @@ class AutonomousAuditService {
   private saveReport(report: AuditReport) {
     const reports = this.getReports();
     reports.push(report);
-    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(reports));
+    kernelStorage.setItem(this.STORAGE_KEY, JSON.stringify(reports));
   }
 
   getReports(): AuditReport[] {
-    const data = localStorage.getItem(this.STORAGE_KEY);
+    const data = kernelStorage.getItem(this.STORAGE_KEY);
     return data ? JSON.parse(data) : [];
   }
 
@@ -61,7 +62,7 @@ class AutonomousAuditService {
     const report = reports.find(r => r.id === reportId);
     if (report) {
       report.status = 'applied';
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(reports));
+      kernelStorage.setItem(this.STORAGE_KEY, JSON.stringify(reports));
       // In production, this would write the 'after' content back to the project files
     }
   }

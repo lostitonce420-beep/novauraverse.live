@@ -14,6 +14,11 @@ export default function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
   }
 
   if (user && !allowedRoles.includes(user.role)) {
+    // If buyer is trying to access a creator-only route, redirect to application
+    if (user.role === 'buyer' && allowedRoles.includes('creator')) {
+      return <Navigate to="/creator/apply" replace />;
+    }
+
     // Redirect based on role
     if (user.role === 'admin') {
       return <Navigate to="/admin/dashboard" replace />;

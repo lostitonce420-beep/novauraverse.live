@@ -73,7 +73,7 @@ export class ErrorBoundary extends Component<Props, State> {
    * Navigate to the home page
    */
   private handleGoHome = (): void => {
-    window.location.href = '/';
+    window.location.href = import.meta.env.BASE_URL || '/';
   };
 
   public render(): ReactNode {

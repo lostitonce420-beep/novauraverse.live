@@ -1,3 +1,4 @@
+import { kernelStorage } from '@/kernel/kernelStorage.js';
 /**
  * NovAura Training Data Service
  *
@@ -50,7 +51,7 @@ export interface TrainingEntry {
 
 function load(): TrainingEntry[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = kernelStorage.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
@@ -62,7 +63,7 @@ function save(entries: TrainingEntry[]) {
   const pruned = entries.length > MAX_ENTRIES
     ? entries.slice(entries.length - MAX_ENTRIES)
     : entries;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(pruned));
+  kernelStorage.setItem(STORAGE_KEY, JSON.stringify(pruned));
 }
 
 function makeId(): string {
@@ -164,6 +165,6 @@ export const trainingDataService = {
    * Clear all stored training data (owner/admin action).
    */
   clearAll() {
-    localStorage.removeItem(STORAGE_KEY);
+    kernelStorage.removeItem(STORAGE_KEY);
   },
 };

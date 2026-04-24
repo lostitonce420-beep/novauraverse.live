@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
   Search, 
@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { getAssets } from '@/services/marketService';
 import { formatPrice, formatDate } from '@/utils/format';
 import { Box } from 'lucide-react';
-import type { AssetStatus } from '@/types';
+import type { Asset, AssetStatus } from '@/types';
 
 const statusColors: Record<AssetStatus, string> = {
   draft: 'bg-text-muted/20 text-text-muted',
@@ -29,8 +29,24 @@ const statusLabels: Record<AssetStatus, string> = {
 export default function AdminAssets() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<AssetStatus | 'all'>('all');
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [_loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadAssets = async () => {
+      try {
+        const allAssets = await getAssets();
+        setAssets(allAssets);
+      } catch (err) {
+        console.error('Failed to load assets:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadAssets();
+  }, []);
   
-  const filteredAssets = getAssets().filter(asset => {
+  const filteredAssets = assets.filter((asset: Asset) => {
     const matchesSearch = asset.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          asset.creator?.username?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'all' || asset.status === statusFilter;

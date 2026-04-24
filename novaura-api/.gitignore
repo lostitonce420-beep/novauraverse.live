@@ -1,8 +1,0 @@
-node_modules/
-dist/
-*.log
-
-# Environment — NEVER commit secrets
-.env
-.env.local
-.env.production

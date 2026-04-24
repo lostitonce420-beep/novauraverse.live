@@ -1,3 +1,12 @@
+import { 
+  doc, 
+  getDoc, 
+  setDoc, 
+  updateDoc,
+  serverTimestamp,
+  runTransaction
+} from 'firebase/firestore';
+import { db } from '../config/firebase';
 import { economyService } from './economyService';
 
 export interface UserBadge {
@@ -7,6 +16,7 @@ export interface UserBadge {
   description: string;
   isTradable: boolean;
   tier: 'founder' | 'rare' | 'common';
+  earnedAt?: string;
 }
 
 export interface SocialProfile {
@@ -14,17 +24,18 @@ export interface SocialProfile {
   badges: UserBadge[];
   nameToken: string; // Special icon next to name
   reputation: number;
+  updatedAt?: any;
 }
 
-class SocialHubService {
-  private STORAGE_KEY = 'novaura_social_profiles';
+const PROFILES_COLLECTION = 'socialProfiles';
 
+class SocialHubService {
   // --- Gambling Bot (58x2 Dice) ---
-  async rollDice(userId: string, betAmount: number): Promise<{ roll: number; success: boolean; payout: number }> {
+  async rollDice(userId: string, betAmount: number): Promise<{ roll: number; success: boolean; payout: number; newBalance?: number }> {
     if (betAmount > 20) throw new Error("Maximum bet is 20 Nova Coins.");
     
     // Check balance via economyService
-    const balance = economyService.getSecureBalance(userId);
+    const balance = await economyService.getBalance(userId);
     if (balance < betAmount) throw new Error("Insufficient Nova Coins.");
 
     const roll = Math.floor(Math.random() * 100) + 1;
@@ -33,43 +44,131 @@ class SocialHubService {
 
     // Resolve transaction
     if (success) {
-      economyService.addCoins(userId, betAmount, "Dice Roll Payout (58x2)");
+      await economyService.useCoins(userId, -betAmount, "Dice Roll Payout (58x2)"); // Negative = add coins
     } else {
-      economyService.spendCoins(userId, betAmount, "Dice Roll Bet (58x2)");
+      await economyService.useCoins(userId, betAmount, "Dice Roll Bet (58x2)");
     }
+    
+    const newBalance = await economyService.getBalance(userId);
 
     console.log(`[SOCIAL_BOT] User ${userId} rolled ${roll}. Success: ${success}. Payout: ${payout}`);
-    return { roll, success, payout };
+    return { roll, success, payout, newBalance };
   }
 
   // --- Badge & Token System ---
-  getProfile(userId: string): SocialProfile {
-    const profiles = this.getAllProfiles();
-    return profiles[userId] || { userId, badges: [], nameToken: '👤', reputation: 0 };
+  async getProfile(userId: string): Promise<SocialProfile> {
+    if (!db) throw new Error('Firestore not initialized');
+    
+    const docRef = doc(db, PROFILES_COLLECTION, userId);
+    const docSnap = await getDoc(docRef);
+    
+    if (docSnap.exists()) {
+      return docSnap.data() as SocialProfile;
+    }
+    
+    // Return default profile
+    return { userId, badges: [], nameToken: '👤', reputation: 0 };
   }
 
-  assignBadge(userId: string, badge: UserBadge) {
-    const profiles = this.getAllProfiles();
-    const profile = this.getProfile(userId);
+  async assignBadge(userId: string, badge: UserBadge): Promise<void> {
+    if (!db) throw new Error('Firestore not initialized');
     
-    if (!profile.badges.find(b => b.id === badge.id)) {
-      profile.badges.push(badge);
-      profiles[userId] = profile;
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(profiles));
+    const docRef = doc(db, PROFILES_COLLECTION, userId);
+    const docSnap = await getDoc(docRef);
+    
+    const badgeWithTimestamp = {
+      ...badge,
+      earnedAt: new Date().toISOString()
+    };
+    
+    if (!docSnap.exists()) {
+      // Create new profile with badge
+      const newProfile: SocialProfile = {
+        userId,
+        badges: [badgeWithTimestamp],
+        nameToken: '👤',
+        reputation: 0,
+        updatedAt: serverTimestamp()
+      };
+      await setDoc(docRef, newProfile);
+    } else {
+      const profile = docSnap.data() as SocialProfile;
+      
+      // Check if badge already exists
+      if (!profile.badges.find(b => b.id === badge.id)) {
+        await updateDoc(docRef, {
+          badges: [...profile.badges, badgeWithTimestamp],
+          updatedAt: serverTimestamp()
+        });
+      }
     }
   }
 
-  updateNameToken(userId: string, token: string) {
-    const profiles = this.getAllProfiles();
-    const profile = this.getProfile(userId);
-    profile.nameToken = token;
-    profiles[userId] = profile;
-    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(profiles));
+  async updateNameToken(userId: string, token: string): Promise<void> {
+    if (!db) throw new Error('Firestore not initialized');
+    
+    const docRef = doc(db, PROFILES_COLLECTION, userId);
+    const docSnap = await getDoc(docRef);
+    
+    if (!docSnap.exists()) {
+      // Create new profile with token
+      const newProfile: SocialProfile = {
+        userId,
+        badges: [],
+        nameToken: token,
+        reputation: 0,
+        updatedAt: serverTimestamp()
+      };
+      await setDoc(docRef, newProfile);
+    } else {
+      await updateDoc(docRef, {
+        nameToken: token,
+        updatedAt: serverTimestamp()
+      });
+    }
   }
 
-  private getAllProfiles(): Record<string, SocialProfile> {
-    const data = localStorage.getItem(this.STORAGE_KEY);
-    return data ? JSON.parse(data) : {};
+  async updateReputation(userId: string, delta: number): Promise<number> {
+    if (!db) throw new Error('Firestore not initialized');
+    
+    const docRef = doc(db, PROFILES_COLLECTION, userId);
+    
+    try {
+      const newReputation = await runTransaction(db, async (transaction) => {
+        const docSnap = await transaction.get(docRef);
+        
+        let currentReputation = 0;
+        
+        if (!docSnap.exists()) {
+          // Create new profile
+          const newProfile: SocialProfile = {
+            userId,
+            badges: [],
+            nameToken: '👤',
+            reputation: Math.max(0, delta),
+            updatedAt: serverTimestamp()
+          };
+          transaction.set(docRef, newProfile);
+          return Math.max(0, delta);
+        } else {
+          const profile = docSnap.data() as SocialProfile;
+          currentReputation = (profile.reputation || 0) + delta;
+          currentReputation = Math.max(0, currentReputation); // No negative reputation
+          
+          transaction.update(docRef, {
+            reputation: currentReputation,
+            updatedAt: serverTimestamp()
+          });
+        }
+        
+        return currentReputation;
+      });
+      
+      return newReputation;
+    } catch (error) {
+      console.error('Reputation update failed:', error);
+      throw error;
+    }
   }
 }
 

@@ -1,7 +1,17 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { User } from '@/types';
-import { apiClient } from '@/services/apiClient';
+import { auth, db } from '../config/firebase';
+import { 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signOut,
+  onAuthStateChanged,
+  updateProfile as updateFirebaseProfile,
+  GoogleAuthProvider,
+  signInWithPopup
+} from 'firebase/auth';
+import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 
 interface AuthState {
   user: User | null;
@@ -9,19 +19,20 @@ interface AuthState {
   isLoading: boolean;
   error: string | null;
 
-  // Actions
   login: (email: string, password: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
   signup: (email: string, password: string, username: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   updateProfile: (data: Partial<User>) => Promise<void>;
   claimDailyCoins: () => Promise<void>;
   useCoins: (amount: number) => Promise<boolean>;
-  setUser: (user: User | null) => void;
+  useActionTokens: (amount: number) => Promise<boolean>;
+  init: () => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   clearError: () => void;
-  init: () => void;
+  setUser: (user: User | null) => void;
+  isOwner: () => boolean;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -31,35 +42,65 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       isLoading: false,
       error: null,
+      setUser: (user: any | null) => set({ user, isAuthenticated: !!user }),
 
       init: () => {
-        // On app load, if we have a JWT token, silently re-validate with the server
-        const token = apiClient.getToken();
-        if (!token) return;
-
-        const { user } = get();
-        if (!user) return;
-
-        apiClient.get<{ user: User }>('/auth/me')
-          .then(({ user }) => {
-            set({ user, isAuthenticated: true });
-          })
-          .catch(() => {
-            // Token expired or invalid — clear session
-            apiClient.clearToken();
-            set({ user: null, isAuthenticated: false });
-          });
+        if (!auth) return;
+        set({ isLoading: true });
+        
+        onAuthStateChanged(auth, async (firebaseUser) => {
+          if (firebaseUser) {
+            try {
+              const userDoc = await getDoc(doc(db!, 'users', firebaseUser.uid));
+              if (userDoc.exists()) {
+                const data = userDoc.data();
+                set({ 
+                  user: { id: firebaseUser.uid, actionTokens: 0, ...data } as User, 
+                  isAuthenticated: true,
+                  isLoading: false 
+                });
+              } else {
+                // Construct fallback if missing from DB
+                const fallbackUser = {
+                  id: firebaseUser.uid,
+                  email: firebaseUser.email || '',
+                  username: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+                  role: 'buyer',
+                  membershipTier: 'free',
+                  actionTokens: 0
+                } as User;
+                set({ user: fallbackUser, isAuthenticated: true, isLoading: false });
+              }
+            } catch (e) {
+              console.warn('Failed to read user doc', e);
+              set({ isLoading: false });
+            }
+          } else {
+            set({ user: null, isAuthenticated: false, isLoading: false });
+          }
+        });
       },
 
       login: async (email: string, password: string) => {
+        if (!auth) throw new Error('Firebase not initialized');
         set({ isLoading: true, error: null });
         try {
-          const { token, user } = await apiClient.post<{ token: string; user: User }>(
-            '/auth/login',
-            { email, password }
-          );
-          apiClient.setToken(token);
-          set({ user, isAuthenticated: true, isLoading: false, error: null });
+          const cred = await signInWithEmailAndPassword(auth, email, password);
+          const userDoc = await getDoc(doc(db!, 'users', cred.user.uid));
+          const userData = userDoc.exists() ? userDoc.data() : {
+            email: cred.user.email,
+            username: cred.user.displayName || email.split('@')[0],
+            role: 'buyer',
+            membershipTier: 'free',
+            actionTokens: 0
+          };
+          
+          set({ 
+            user: { id: cred.user.uid, ...userData } as User, 
+            isAuthenticated: true, 
+            isLoading: false, 
+            error: null 
+          });
         } catch (err: any) {
           set({ isLoading: false, error: err.message });
           throw err;
@@ -67,97 +108,172 @@ export const useAuthStore = create<AuthState>()(
       },
 
       loginWithGoogle: async () => {
-        // Google OAuth requires a real OAuth flow — available after Polsia backend setup
-        set({ isLoading: false, error: 'Google sign-in coming soon. Please use email & password for now.' });
-        throw new Error('Google sign-in not yet available');
+        if (!auth || !db) throw new Error('Firebase not initialized');
+        set({ isLoading: true, error: null });
+        try {
+          const provider = new GoogleAuthProvider();
+          provider.addScope('email');
+          provider.addScope('profile');
+          
+          const cred = await signInWithPopup(auth, provider);
+          const firebaseUser = cred.user;
+          
+          // Force synchronization of the token state to Firestore instance
+          await firebaseUser.getIdToken(true);
+          
+          // Check if user exists in Firestore
+          const userDocRef = doc(db, 'users', firebaseUser.uid);
+          const userDoc = await getDoc(userDocRef);
+          
+          if (!userDoc.exists()) {
+            // Create new user from Google data
+            const newUser: Omit<User, 'id'> = {
+              email: firebaseUser.email || '',
+              username: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+              role: 'buyer',
+              preferences: {
+                showNsfw: false,
+                ageVerified: false,
+                emailNotifications: true,
+                marketingEmails: true,
+                publicProfile: true,
+                showActivity: true,
+              },
+              membershipTier: 'free',
+              actionTokens: 0,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              avatar: firebaseUser.photoURL || undefined
+            };
+            
+            await setDoc(userDocRef, newUser);
+            
+            set({ 
+              user: { id: firebaseUser.uid, ...newUser } as User, 
+              isAuthenticated: true, 
+              isLoading: false, 
+              error: null 
+            });
+          } else {
+            // Existing user
+            const userData = userDoc.data();
+            set({ 
+              user: { id: firebaseUser.uid, ...userData } as User, 
+              isAuthenticated: true, 
+              isLoading: false, 
+              error: null 
+            });
+          }
+        } catch (err: any) {
+          console.error('Google login error:', err);
+          set({ isLoading: false, error: err.message });
+          throw err;
+        }
       },
 
       signup: async (email: string, password: string, username: string) => {
+        if (!auth || !db) throw new Error('Firebase not initialized');
         set({ isLoading: true, error: null });
         try {
-          const { token, user } = await apiClient.post<{ token: string; user: User }>(
-            '/auth/signup',
-            { email, password, username }
-          );
-          apiClient.setToken(token);
-          set({ user, isAuthenticated: true, isLoading: false, error: null });
+          const cred = await createUserWithEmailAndPassword(auth, email, password);
+          await updateFirebaseProfile(cred.user, { displayName: username });
+          
+          const newUser: Omit<User, 'id'> = {
+            email,
+            username,
+            role: 'buyer',
+            preferences: {
+              showNsfw: false,
+              ageVerified: false,
+              emailNotifications: true,
+              marketingEmails: true,
+              publicProfile: true,
+              showActivity: true
+            },
+            actionTokens: 0,
+            membershipTier: 'free',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          } as any;
+          
+          // Save to Firestore
+          await setDoc(doc(db, 'users', cred.user.uid), newUser);
+          
+          set({ 
+            user: { id: cred.user.uid, ...newUser } as User, 
+            isAuthenticated: true, 
+            isLoading: false, 
+            error: null 
+          });
         } catch (err: any) {
           set({ isLoading: false, error: err.message });
           throw err;
         }
       },
 
-      logout: () => {
-        apiClient.post('/auth/logout', {}).catch(() => {}); // fire-and-forget
-        apiClient.clearToken();
+      logout: async () => {
+        if (auth) await signOut(auth);
         set({ user: null, isAuthenticated: false, error: null });
       },
 
       updateProfile: async (data: Partial<User>) => {
         const { user } = get();
-        if (!user) return;
+        if (!user || !db) return;
         set({ isLoading: true });
         try {
-          const { user: updated } = await apiClient.patch<{ user: User }>(
-            '/auth/profile',
-            data
-          );
-          set({ user: updated, isLoading: false });
+          await updateDoc(doc(db, 'users', user.id), data);
+          set({ user: { ...user, ...data } as User, isLoading: false });
         } catch (err: any) {
-          set({ isLoading: false });
+          set({ isLoading: false, error: err.message });
           throw err;
         }
       },
 
-      claimDailyCoins: async () => {
-        const { user } = get();
-        if (!user) return;
-
-        const now = new Date();
-        if (user.lastDailyClaim) {
-          const last = new Date(user.lastDailyClaim);
-          const sameDay =
-            last.getFullYear() === now.getFullYear() &&
-            last.getMonth() === now.getMonth() &&
-            last.getDate() === now.getDate();
-          if (sameDay) throw new Error('Daily coins already claimed today.');
-        }
-
-        const newBalance = (user.consciousnessCoins ?? 0) + 50;
-        await get().updateProfile({
-          consciousnessCoins: newBalance,
-          lastDailyClaim: now.toISOString(),
-        });
+      claimDailyCoins: async () => {},
+      useCoins: async (amount: number) => {
+        return get().useActionTokens(amount);
       },
 
-      useCoins: async (amount: number) => {
+      useActionTokens: async (amount: number) => {
         const { user } = get();
-        if (!user) return false;
-        const current = user.consciousnessCoins ?? 0;
-        if (current < amount) return false;
+        if (!user || !db) return false;
+        
+        const currentTokens = user.actionTokens || 0;
+        if (currentTokens < amount) return false;
+
         try {
-          await get().updateProfile({ consciousnessCoins: current - amount });
+          const newTokens = currentTokens - amount;
+          await updateDoc(doc(db, 'users', user.id), {
+            actionTokens: newTokens,
+            updatedAt: new Date().toISOString()
+          });
+          
+          set({ user: { ...user, actionTokens: newTokens } as User });
           return true;
-        } catch {
+        } catch (err) {
+          console.error('Failed to use action tokens:', err);
           return false;
         }
       },
 
-      setUser: (user: User | null) => {
-        if (!user) apiClient.clearToken();
-        set({ user, isAuthenticated: !!user });
-      },
-
-      setLoading: (isLoading: boolean) => set({ isLoading }),
       setError: (error: string | null) => set({ error }),
       clearError: () => set({ error: null }),
+      
+      isOwner: () => {
+        const user = get().user;
+        if (!user || !user.email) return false;
+        const ownerEmails = [
+          'dillan.copeland@novaura.xyz',
+          'business.dc91@gmail.com',
+          'the.lost.catalyst@gmail.com',
+          'lostitonce420@gmail.com'
+        ];
+        return ownerEmails.includes(user.email.toLowerCase());
+      },
     }),
     {
-      name: 'novaura-auth',
-      partialize: (state) => ({
-        user: state.user,
-        isAuthenticated: state.isAuthenticated,
-      }),
+      name: 'novaura-auth-unified',
+      partialize: (state) => ({ user: state.user, isAuthenticated: state.isAuthenticated }),
     }
   )
 );

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -60,10 +60,25 @@ export default function GamesPage() {
   const [pricingFilter, setPricingFilter] = useState<'all' | 'free' | 'paid'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [allGames, setAllGames] = useState<Asset[]>([]);
+  const [_isLoading, setIsLoading] = useState(true);
 
   // Get all games from assets
-  const allGames = useMemo(() => {
-    return getAssets().filter((a: Asset) => a.assetType === 'game' && a.status === 'approved');
+  useEffect(() => {
+    const loadGames = async () => {
+      setIsLoading(true);
+      try {
+        const assets = await getAssets();
+        const games = assets.filter((a: Asset) => a.assetType === 'game' && a.status === 'approved');
+        setAllGames(games);
+      } catch (error) {
+        console.error('Failed to load games:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadGames();
   }, []);
 
   const filteredGames = useMemo(() => {

@@ -104,7 +104,7 @@ export function RGBShowcase() {
       <section className="space-y-6">
         <h2 className="text-2xl font-bold text-white">RGB Underline Flow</h2>
         <div className="space-y-4">
-          <a href="#" className="text-xl text-white rgb-underline-flow inline-block">
+          <a href="/" className="text-xl text-white rgb-underline-flow inline-block">
             Hover over this link
           </a>
           <br />

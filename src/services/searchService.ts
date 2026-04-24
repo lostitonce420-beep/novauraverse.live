@@ -1,6 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import type { Asset, EngineType, Complexity, ContentRating } from '@/types';
 import { getAssets } from './marketService';
+import { kernelStorage } from '@/kernel/kernelStorage.js';
 
 // =============================================================================
 // Types & Interfaces
@@ -289,7 +290,7 @@ const sortAssets = (assets: Asset[], sortBy: SearchFilters['sortBy'], query?: st
  * 
  * @example
  * ```typescript
- * const results = searchAssets({
+ * const results = await searchAssets({
  *   query: 'rpg framework',
  *   engine: 'Unity',
  *   minPrice: 0,
@@ -298,9 +299,10 @@ const sortAssets = (assets: Asset[], sortBy: SearchFilters['sortBy'], query?: st
  * });
  * ```
  */
-export const searchAssets = (filters: SearchFilters): Asset[] => {
+export const searchAssets = async (filters: SearchFilters): Promise<Asset[]> => {
   // Get all approved assets
-  let results = getAssets().filter(asset => asset.status === 'approved');
+  const allAssets = await getAssets();
+  let results = allAssets.filter(asset => asset.status === 'approved');
   
   // Full-text search on title, description, tags, category
   if (filters.query && filters.query.trim() !== '') {
@@ -393,7 +395,7 @@ export const searchAssets = (filters: SearchFilters): Asset[] => {
  * // Returns: ['Unity RPG Framework', 'Unity 2D Platformer', 'universal', ...]
  * ```
  */
-export const getSearchSuggestions = (query: string, limit: number = 8): string[] => {
+export const getSearchSuggestions = async (query: string, limit: number = 8): Promise<string[]> => {
   if (!query || query.trim() === '') {
     return [];
   }
@@ -403,7 +405,8 @@ export const getSearchSuggestions = (query: string, limit: number = 8): string[]
   const seen = new Set<string>();
   
   // Get matching asset titles
-  const assets = getAssets().filter(asset => asset.status === 'approved');
+  const allAssets = await getAssets();
+  const assets = allAssets.filter(asset => asset.status === 'approved');
   for (const asset of assets) {
     if (asset.title.toLowerCase().includes(normalizedQuery)) {
       if (!seen.has(asset.title)) {
@@ -465,7 +468,7 @@ export const saveRecentSearch = (query: string): void => {
     // Add to front
     const updated = [normalizedQuery, ...filtered].slice(0, MAX_RECENT_SEARCHES);
     
-    localStorage.setItem(STORAGE_KEYS.recentSearches, JSON.stringify(updated));
+    kernelStorage.setItem(STORAGE_KEYS.recentSearches, JSON.stringify(updated));
   } catch (error) {
     console.error('Failed to save recent search:', error);
   }
@@ -485,7 +488,7 @@ export const saveRecentSearch = (query: string): void => {
  */
 export const getRecentSearches = (): string[] => {
   try {
-    const data = localStorage.getItem(STORAGE_KEYS.recentSearches);
+    const data = kernelStorage.getItem(STORAGE_KEYS.recentSearches);
     return data ? JSON.parse(data) : [];
   } catch (error) {
     console.error('Failed to get recent searches:', error);
@@ -503,7 +506,7 @@ export const getRecentSearches = (): string[] => {
  */
 export const clearRecentSearches = (): void => {
   try {
-    localStorage.removeItem(STORAGE_KEYS.recentSearches);
+    kernelStorage.removeItem(STORAGE_KEYS.recentSearches);
   } catch (error) {
     console.error('Failed to clear recent searches:', error);
   }
@@ -578,11 +581,37 @@ export const getPopularSearches = (limit: number = 10): string[] => {
  * const { results, resultCount } = useAssetSearch(debouncedFilters);
  * ```
  */
-export const useAssetSearch = (filters: SearchFilters): SearchResult => {
-  // Memoize the search results to avoid recalculation on re-renders
-  // Uses deep comparison of filters object
-  const results = useMemo(() => {
-    return searchAssets(filters);
+export const useAssetSearch = (filters: SearchFilters): SearchResult & { isSearching: boolean } => {
+  const [results, setResults] = useState<Asset[]>([]);
+  const [isSearching, setIsSearching] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    
+    const performSearch = async () => {
+      setIsSearching(true);
+      try {
+        const searchResults = await searchAssets(filters);
+        if (!cancelled) {
+          setResults(searchResults);
+        }
+      } catch (error) {
+        console.error('Search failed:', error);
+        if (!cancelled) {
+          setResults([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsSearching(false);
+        }
+      }
+    };
+    
+    performSearch();
+    
+    return () => {
+      cancelled = true;
+    };
   }, [
     filters.query,
     filters.category,
@@ -600,10 +629,6 @@ export const useAssetSearch = (filters: SearchFilters): SearchResult => {
   
   // Memoize the count
   const resultCount = useMemo(() => results.length, [results]);
-  
-  // For async operations, isSearching would be true during fetch
-  // Since this is client-side filtering, it's always false
-  const isSearching = false;
   
   return {
     results,

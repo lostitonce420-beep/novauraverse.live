@@ -4,6 +4,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useLocation } from 'react-router-dom';
 import { aiOrchestrator } from '../../services/aiOrchestrator';
 import { useAuthStore } from '../../stores/authStore';
+import { db } from '../../config/firebase';
+import {
+  collection, addDoc, query, orderBy, onSnapshot,
+  serverTimestamp, limit, deleteDoc, getDocs
+} from 'firebase/firestore';
 
 interface FloatMessage {
   role: 'user' | 'assistant';
@@ -11,7 +16,6 @@ interface FloatMessage {
   ts: string;
 }
 
-const STORAGE_PREFIX = 'novaura-float-chat';
 
 // Routes where the widget is suppressed (Aura already lives there)
 const HIDDEN_ROUTES = ['/ide'];
@@ -20,7 +24,8 @@ const FloatingNovaChat: React.FC = () => {
   const { user } = useAuthStore();
   const location = useLocation();
 
-  const storageKey = `${STORAGE_PREFIX}-${user?.id ?? 'guest'}`;
+  const uid = user?.id ?? null;
+  const colPath = uid ? `users/${uid}/nova_conversations` : null;
 
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<FloatMessage[]>([]);
@@ -34,31 +39,41 @@ const FloatingNovaChat: React.FC = () => {
   const dragOffset = useRef({ x: 0, y: 0 });
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Load messages from storage when key changes (login/logout)
+  // Load messages from Firestore with real-time listener
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(storageKey);
-      const parsed: FloatMessage[] = stored ? JSON.parse(stored) : [];
-      if (parsed.length === 0) {
+    if (!db || !colPath) {
+      setMessages([{
+        role: 'assistant',
+        content: "Hey — I'm Nova. Always here when you need me. Ask me anything about the platform, your projects, or just think out loud.",
+        ts: new Date().toISOString(),
+      }]);
+      return;
+    }
+
+    const q = query(
+      collection(db, colPath),
+      orderBy('createdAt', 'asc'),
+      limit(100)
+    );
+
+    const unsub = onSnapshot(q, (snap) => {
+      if (snap.empty) {
         setMessages([{
           role: 'assistant',
           content: "Hey — I'm Nova. Always here when you need me. Ask me anything about the platform, your projects, or just think out loud.",
           ts: new Date().toISOString(),
         }]);
-      } else {
-        setMessages(parsed);
+        return;
       }
-    } catch {
-      setMessages([]);
-    }
-  }, [storageKey]);
+      setMessages(snap.docs.map(d => ({
+        role: d.data().role as 'user' | 'assistant',
+        content: d.data().content,
+        ts: d.data().createdAt?.toDate?.().toISOString() ?? new Date().toISOString(),
+      })));
+    }, () => { /* offline */ });
 
-  // Persist messages
-  useEffect(() => {
-    if (messages.length > 0) {
-      localStorage.setItem(storageKey, JSON.stringify(messages));
-    }
-  }, [messages, storageKey]);
+    return () => unsub();
+  }, [uid, colPath]);
 
   // Set default position once window is available
   useEffect(() => {
@@ -110,45 +125,46 @@ const FloatingNovaChat: React.FC = () => {
     };
   }, [position]);
 
+  const saveMsg = async (role: 'user' | 'assistant', content: string) => {
+    if (!db || !colPath) return;
+    try {
+      await addDoc(collection(db, colPath), { role, content, createdAt: serverTimestamp(), timestamp: serverTimestamp() });
+    } catch { /* silent */ }
+  };
+
   const handleSend = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!prompt.trim() || isThinking) return;
 
     const userMsg = prompt.trim();
     setPrompt('');
-    setMessages(prev => [...prev, { role: 'user', content: userMsg, ts: new Date().toISOString() }]);
+    saveMsg('user', userMsg);
     setIsThinking(true);
 
     try {
       const response = await aiOrchestrator.sendMessage(
         userMsg,
-        'Nova Global Chat — persistent floating companion, user is browsing NovAura',
+        'Nova Global Chat — persistent floating companion. User is on the NovAura platform marketplace. Maintain conversation continuity with WebOS sessions.',
         'float_chat'
       );
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: response.content || 'Signal lost. Try again.',
-        ts: new Date().toISOString(),
-      }]);
+      const reply = response.content || 'Signal lost. Try again.';
+      saveMsg('assistant', reply);
     } catch {
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: 'Neural link interrupted. Check your connection.',
-        ts: new Date().toISOString(),
-      }]);
+      saveMsg('assistant', 'Neural link interrupted. Check your connection.');
     } finally {
       setIsThinking(false);
     }
   };
 
-  const handleClear = () => {
-    const seed: FloatMessage = {
-      role: 'assistant',
-      content: "Fresh start. What's on your mind?",
-      ts: new Date().toISOString(),
-    };
-    setMessages([seed]);
-    localStorage.setItem(storageKey, JSON.stringify([seed]));
+  const handleClear = async () => {
+    if (!db || !colPath) {
+      setMessages([{ role: 'assistant', content: "Fresh start. What's on your mind?", ts: new Date().toISOString() }]);
+      return;
+    }
+    try {
+      const snap = await getDocs(collection(db, colPath));
+      await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
+    } catch { /* silent */ }
   };
 
   // Hide on IDE page — Aura already lives there

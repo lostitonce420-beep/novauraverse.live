@@ -1,279 +1,259 @@
 import type { Asset, Category, Review, Order, Royalty, CreatorStats } from '@/types';
+import { db, storage } from '../config/firebase';
+import { collection, doc, getDocs, getDoc, addDoc, setDoc, updateDoc, deleteDoc, query, where, orderBy, limit, serverTimestamp } from 'firebase/firestore';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { apiClient } from './apiClient';
 
-// Categories - defined but with 0 assets initially
-export const platformCategories: Category[] = [
-  {
-    id: '1',
-    name: 'Games & Demos',
-    slug: 'games-demos',
-    icon: 'Gamepad2',
-    description: 'Full game projects and playable prototypes',
-    sortOrder: 1,
-    assetCount: 0,
-  },
-  {
-    id: '2',
-    name: 'Frameworks & Tools',
-    slug: 'frameworks-tools',
-    icon: 'Wrench',
-    description: 'Development utilities and code frameworks',
-    sortOrder: 2,
-    assetCount: 0,
-  },
-  {
-    id: '3',
-    name: 'UI Kits & HUDs',
-    slug: 'ui-kits-huds',
-    icon: 'Layout',
-    description: 'Interface components and heads-up displays',
-    sortOrder: 3,
-    assetCount: 0,
-  },
-  {
-    id: '4',
-    name: '2D Art & Sprites',
-    slug: '2d-art-sprites',
-    icon: 'Image',
-    description: 'Graphics, illustrations, and sprite sheets',
-    sortOrder: 4,
-    assetCount: 0,
-  },
-  {
-    id: '5',
-    name: '3D Models & Avatars',
-    slug: '3d-models-avatars',
-    icon: 'Box',
-    description: 'Characters, environments, and 3D assets',
-    sortOrder: 5,
-    assetCount: 0,
-  },
-  {
-    id: '6',
-    name: 'Audio & Music',
-    slug: 'audio-music',
-    icon: 'Music',
-    description: 'Sound effects, music tracks, and audio kits',
-    sortOrder: 6,
-    assetCount: 0,
-  },
-];
+import { 
+  platformCategories, 
+  platformCreatorStats, 
+  platformReviews, 
+  platformOrders, 
+  platformRoyalties 
+} from '../data/marketData';
 
-// Data access - ensured real content from storage
-export const getAssets = (): Asset[] => {
-  const data = localStorage.getItem(STORAGE_KEYS.assets);
-  return data ? JSON.parse(data) : [];
+// Legacy compatibility exports
+export { 
+  platformCategories, 
+  platformCreatorStats, 
+  platformReviews, 
+  platformOrders, 
+  platformRoyalties 
 };
 
-export const getFeaturedAssets = (): Asset[] => {
-  const assets = getAssets().filter(asset => asset.status === 'approved');
-  return assets.sort((a, b) => (b.ratingAverage || 0) - (a.ratingAverage || 0)).slice(0, 4);
+export const getCategories = async (): Promise<Category[]> => {
+  return platformCategories;
 };
 
-export const platformReviews: Review[] = [];
-export const platformOrders: Order[] = [];
-export const platformRoyalties: Royalty[] = [];
+export const initializeStorage = (): void => {};
+export const getStoredOrders = (): Order[] => [];
+export const getStoredRoyalties = (): Royalty[] => [];
 
-// Default empty stats
-export const platformCreatorStats: CreatorStats = {
-  totalAssets: 0,
-  totalSales: 0,
-  totalDownloads: 0,
-  totalEarnings: 0,
-  pendingRoyalties: 0,
-  availableRoyalties: 0,
-  lifetimeRoyalties: 0,
+export const getAssets = async (): Promise<Asset[]> => {
+  if (!db) return [];
+  const q = query(collection(db, 'assets'), where('status', '==', 'approved'), orderBy('createdAt', 'desc'));
+  const snap = await getDocs(q);
+  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Asset));
 };
 
-// localStorage keys
-const STORAGE_KEYS = {
-  assets: 'novaura_assets',
-  reviews: 'novaura_reviews',
-  orders: 'novaura_orders',
-  royalties: 'novaura_royalties',
-  categories: 'novaura_categories',
+export const getAssetsByCreator = async (creatorId: string): Promise<Asset[]> => {
+  if (!db) return [];
+  const q = query(collection(db, 'assets'), where('creatorId', '==', creatorId));
+  const snap = await getDocs(q);
+  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Asset));
 };
 
-// Initialize storage with empty data if not exists
-export const initializeStorage = () => {
-  if (!localStorage.getItem(STORAGE_KEYS.assets)) {
-    localStorage.setItem(STORAGE_KEYS.assets, JSON.stringify([]));
+export const getFeaturedAssets = async (): Promise<Asset[]> => {
+  if (!db) return [];
+  const q = query(collection(db, 'assets'), where('featured', '==', true), where('status', '==', 'approved'), limit(10));
+  const snap = await getDocs(q);
+  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Asset));
+};
+
+export const getTrendingAssets = async (): Promise<Asset[]> => {
+  if (!db) return [];
+  const q = query(collection(db, 'assets'), where('status', '==', 'approved'), orderBy('downloads', 'desc'), limit(10));
+  const snap = await getDocs(q);
+  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Asset));
+};
+
+export const getNewArrivals = async (): Promise<Asset[]> => {
+  if (!db) return [];
+  const q = query(collection(db, 'assets'), where('status', '==', 'approved'), orderBy('createdAt', 'desc'), limit(8));
+  const snap = await getDocs(q);
+  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Asset));
+};
+
+export const getAssetById = async (id: string): Promise<Asset> => {
+  if (!db) throw new Error("Database not connected");
+  const docSnap = await getDoc(doc(db, 'assets', id));
+  if (!docSnap.exists()) throw new Error('Asset not found');
+  return { id: docSnap.id, ...docSnap.data() } as Asset;
+};
+
+export const uploadAssetFile = async (
+  file: File, 
+  directory: string = 'assets',
+  onProgress?: (progress: number) => void
+): Promise<{ url: string, path: string }> => {
+  if (!storage) throw new Error("Storage not configured");
+  const uniqueName = `${Date.now()}_${file.name}`;
+  const fullPath = `${directory}/${uniqueName}`;
+  const storageRef = ref(storage, fullPath);
+  
+  const uploadTask = uploadBytesResumable(storageRef, file);
+  
+  return new Promise((resolve, reject) => {
+    uploadTask.on('state_changed', 
+      (snapshot) => {
+        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        if (onProgress) onProgress(progress);
+      }, 
+      (error) => reject(error), 
+      async () => {
+        const url = await getDownloadURL(uploadTask.snapshot.ref);
+        resolve({ url, path: fullPath });
+      }
+    );
+  });
+};
+
+export const createAsset = async (asset: Partial<Asset>): Promise<Asset> => {
+  if (!db) throw new Error("Database not connected");
+  const payload = {
+    ...asset,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    status: asset.status || 'pending', 
+    downloadCount: 0,
+    viewCount: 0,
+    ratingAverage: 0,
+    ratingCount: 0,
+  };
+  const docRef = await addDoc(collection(db, 'assets'), payload);
+  return { id: docRef.id, ...payload } as Asset;
+};
+
+export const updateAsset = async (id: string, data: Partial<Asset>): Promise<Asset> => {
+  if (!db) throw new Error("Database not connected");
+  await updateDoc(doc(db, 'assets', id), { ...data, updatedAt: new Date().toISOString() });
+  return getAssetById(id);
+};
+
+export const deleteAsset = async (id: string): Promise<void> => {
+  if (!db) return;
+  await deleteDoc(doc(db, 'assets', id));
+};
+
+export const getPendingAssets = async (): Promise<Asset[]> => {
+  if (!db) return [];
+  const q = query(collection(db, 'assets'), where('status', '==', 'pending'));
+  const snap = await getDocs(q);
+  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Asset));
+};
+
+export const approveAsset = async (id: string): Promise<void> => {
+  if (!db) return;
+  await updateDoc(doc(db, 'assets', id), { status: 'approved' });
+};
+
+export const rejectAsset = async (id: string, reason?: string): Promise<void> => {
+  if (!db) return;
+  await updateDoc(doc(db, 'assets', id), { status: 'rejected', rejectReason: reason });
+};
+
+export const getAssetReviews = async (assetId: string): Promise<Review[]> => {
+  if (!db) return [];
+  const q = query(collection(db, 'reviews'), where('assetId', '==', assetId), orderBy('createdAt', 'desc'));
+  const snap = await getDocs(q);
+  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Review));
+};
+
+export const createReview = async (assetId: string, review: Partial<Review>): Promise<Review> => {
+  if (!db) throw new Error("Database not connected");
+  const payload = { 
+    ...review, 
+    assetId, 
+    helpfulCount: 0,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  const docRef = await addDoc(collection(db, 'reviews'), payload);
+  return { id: docRef.id, ...payload } as Review;
+};
+
+export const getOrders = async (userId: string): Promise<Order[]> => {
+  if (!db) return [];
+  const q = query(collection(db, 'orders'), where('buyerId', '==', userId), orderBy('createdAt', 'desc'));
+  const snap = await getDocs(q);
+  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+};
+
+export const createOrder = async (order: Partial<Order>): Promise<Order> => {
+  if (!db) throw new Error("Database not connected");
+  
+  const payload = { 
+    ...order, 
+    status: 'completed', 
+    createdAt: new Date().toISOString(),
+    items: order.items || [],
+    totalAmount: order.totalAmount || 0,
+    platformFee: order.platformFee || 0,
+  };
+  
+  const docRef = await addDoc(collection(db, 'orders'), payload);
+  
+  if (order.buyerId && order.items) {
+    for (const item of order.items) {
+      const ownershipId = `${order.buyerId}_${item.id}`;
+      await setDoc(doc(db, 'user_owned_assets', ownershipId), {
+        userId: order.buyerId,
+        assetId: item.id,
+        orderId: docRef.id,
+        purchaseDate: serverTimestamp(),
+        license: item.licenseTier || 'standard'
+      });
+      
+      await updateDoc(doc(db, 'assets', item.id), {
+        downloads: (item.downloads || 0) + 1
+      });
+    }
   }
   
-  if (!localStorage.getItem(STORAGE_KEYS.reviews)) {
-    localStorage.setItem(STORAGE_KEYS.reviews, JSON.stringify([]));
+  return { id: docRef.id, ...payload } as Order;
+};
+
+export const checkOwnership = async (userId: string, assetId: string): Promise<boolean> => {
+  if (!db || !userId) return false;
+  const ownershipId = `${userId}_${assetId}`;
+  const snap = await getDoc(doc(doc(db, 'user_owned_assets', ownershipId)));
+  return snap.exists();
+};
+
+export async function connectStripeAccount(userId: string): Promise<string> {
+  try {
+    const data = await apiClient.post<{ url: string }>('/stripe/connect', { userId });
+    return data.url;
+  } catch (error) {
+    console.error('Failed to connect Stripe:', error);
+    throw error;
   }
-  if (!localStorage.getItem(STORAGE_KEYS.orders)) {
-    localStorage.setItem(STORAGE_KEYS.orders, JSON.stringify([]));
+}
+
+export async function createCheckoutSession(userId: string, items: any[]): Promise<string> {
+  try {
+    const data = await apiClient.post<{ url: string }>('/stripe/checkout', { userId, items });
+    return data.url;
+  } catch (error) {
+    console.error('Failed to create Checkout Session:', error);
+    throw error;
   }
-  if (!localStorage.getItem(STORAGE_KEYS.royalties)) {
-    localStorage.setItem(STORAGE_KEYS.royalties, JSON.stringify([]));
-  }
-  if (!localStorage.getItem(STORAGE_KEYS.categories)) {
-    localStorage.setItem(STORAGE_KEYS.categories, JSON.stringify(platformCategories));
-  }
+}
+
+export const getRoyalties = async (creatorId: string): Promise<Royalty[]> => {
+  if (!db) return [];
+  const q = query(collection(db, 'royalty_ledger'), where('recipientId', '==', creatorId), orderBy('createdAt', 'desc'));
+  const snap = await getDocs(q);
+  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
 };
 
-// Get data from localStorage
-export const getStoredAssets = (): Asset[] => {
-  const data = localStorage.getItem(STORAGE_KEYS.assets);
-  return data ? JSON.parse(data) : [];
-};
-
-export const getStoredReviews = (): Review[] => {
-  const data = localStorage.getItem(STORAGE_KEYS.reviews);
-  return data ? JSON.parse(data) : [];
-};
-
-export const getStoredOrders = (): Order[] => {
-  const data = localStorage.getItem(STORAGE_KEYS.orders);
-  return data ? JSON.parse(data) : [];
-};
-
-export const getStoredRoyalties = (): Royalty[] => {
-  const data = localStorage.getItem(STORAGE_KEYS.royalties);
-  return data ? JSON.parse(data) : [];
-};
-
-export const getStoredCategories = (): Category[] => {
-  const data = localStorage.getItem(STORAGE_KEYS.categories);
-  return data ? JSON.parse(data) : platformCategories;
-};
-
-// Save data to localStorage
-export const saveAsset = (asset: Asset) => {
-  const assets = getStoredAssets();
-  const existingIndex = assets.findIndex(a => a.id === asset.id);
-  if (existingIndex >= 0) {
-    assets[existingIndex] = asset;
-  } else {
-    assets.push(asset);
-  }
-  localStorage.setItem(STORAGE_KEYS.assets, JSON.stringify(assets));
+export const getCreatorStats = async (creatorId: string): Promise<CreatorStats> => {
+  if (!db) return { totalAssets: 0, totalSales: 0, totalDownloads: 0, totalEarnings: 0, pendingRoyalties: 0, availableRoyalties: 0, lifetimeRoyalties: 0 };
   
-  // Update category count
-  updateCategoryCount(asset.category);
-};
-
-export const updateCategoryCount = (categorySlug: string) => {
-  const categories = getStoredCategories();
-  const category = categories.find(c => c.slug === categorySlug);
-  if (category) {
-    const assets = getStoredAssets();
-    category.assetCount = assets.filter(a => a.category === categorySlug && a.status === 'approved').length;
-    localStorage.setItem(STORAGE_KEYS.categories, JSON.stringify(categories));
-  }
-};
-
-export const saveReview = (review: Review) => {
-  const reviews = getStoredReviews();
-  reviews.push(review);
-  localStorage.setItem(STORAGE_KEYS.reviews, JSON.stringify(reviews));
-};
-
-export const saveOrder = (order: Order) => {
-  const orders = getStoredOrders();
-  orders.push(order);
-  localStorage.setItem(STORAGE_KEYS.orders, JSON.stringify(orders));
-};
-
-export const saveRoyalty = (royalty: Royalty) => {
-  const royalties = getStoredRoyalties();
-  royalties.push(royalty);
-  localStorage.setItem(STORAGE_KEYS.royalties, JSON.stringify(royalties));
-};
-
-// Helper functions - use stored data
-export const getAssetBySlug = (slug: string): Asset | undefined => {
-  return getAssets().find(asset => asset.slug === slug);
-};
-
-export const getAssetById = (id: string): Asset | undefined => {
-  return getAssets().find(asset => asset.id === id);
-};
-
-export const getAssetsByCategory = (categorySlug: string): Asset[] => {
-  return getAssets().filter(asset => asset.category === categorySlug && asset.status === 'approved');
-};
-
-export const getAssetsByCreator = (creatorId: string): Asset[] => {
-  return getAssets().filter(asset => asset.creatorId === creatorId);
-};
-
-export const getReviewsByAsset = (assetId: string): Review[] => {
-  return getStoredReviews().filter(review => review.assetId === assetId);
-};
-
-export const getTrendingAssets = (): Asset[] => {
-  const assets = getAssets().filter(asset => asset.status === 'approved');
-  return [...assets].sort((a, b) => (b.downloadCount || 0) - (a.downloadCount || 0)).slice(0, 6);
-};
-
-export const getNewArrivals = (): Asset[] => {
-  const assets = getAssets().filter(asset => asset.status === 'approved');
-  return [...assets]
-    .sort((a, b) => new Date(b.publishedAt || b.createdAt).getTime() - new Date(a.publishedAt || a.createdAt).getTime())
-    .slice(0, 6);
-};
-
-// Get pending assets for admin approval
-export const getPendingAssets = (): Asset[] => {
-  return getAssets().filter(asset => asset.status === 'pending');
-};
-
-// Approve/reject asset
-export const approveAsset = (assetId: string) => {
-  const asset = getAssetById(assetId);
-  if (asset) {
-    asset.status = 'approved';
-    asset.publishedAt = new Date().toISOString();
-    saveAsset(asset);
-  }
-};
-
-export const rejectAsset = (assetId: string, reason: string) => {
-  const asset = getAssetById(assetId);
-  if (asset) {
-    asset.status = 'rejected';
-    asset.rejectionReason = reason;
-    saveAsset(asset);
-  }
-};
-
-// Get creator stats from real data
-export const getCreatorStats = (creatorId: string): CreatorStats => {
-  const assets = getAssetsByCreator(creatorId);
-  const orders = getStoredOrders();
-  const royalties = getStoredRoyalties().filter(r => r.creatorId === creatorId);
-  
-  const creatorAssetIds = assets.map(a => a.id);
-  const creatorOrders = orders.filter(o => o.items.some(i => creatorAssetIds.includes(i.assetId)));
-  
-  const totalSales = creatorOrders.reduce((sum, o) => sum + o.items.filter(i => creatorAssetIds.includes(i.assetId)).length, 0);
-  const totalDownloads = assets.reduce((sum, a) => sum + (a.downloadCount || 0), 0);
-  const totalEarnings = royalties.reduce((sum, r) => sum + r.amount, 0);
-  const pendingRoyalties = royalties.filter(r => r.status === 'pending').reduce((sum, r) => sum + r.amount, 0);
-  const availableRoyalties = royalties.filter(r => r.status === 'available').reduce((sum, r) => sum + r.amount, 0);
+  const royalties = await getRoyalties(creatorId);
+  const totalEarnings = royalties.reduce((acc, r) => acc + (r.amount || 0), 0);
   
   return {
-    totalAssets: assets.length,
-    totalSales,
-    totalDownloads,
-    totalEarnings,
-    pendingRoyalties,
-    availableRoyalties,
-    lifetimeRoyalties: totalEarnings,
+    totalAssets: 0, 
+    totalSales: royalties.length,
+    totalDownloads: 0,
+    totalEarnings: totalEarnings / 100, 
+    pendingRoyalties: 0,
+    availableRoyalties: totalEarnings / 100,
+    lifetimeRoyalties: totalEarnings / 100
   };
 };
 
-// Generate unique ID
-export const generateId = () => {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2);
-};
-
-// Create slug from title
-export const createSlug = (title: string) => {
-  return title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '');
-};
+export const saveAsset = async (asset: Partial<Asset>): Promise<Asset> => createAsset(asset);
+export const generateId = (): string => `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+export const createSlug = (title: string): string => title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');

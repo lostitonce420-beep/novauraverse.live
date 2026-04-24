@@ -1,12 +1,14 @@
 import { Link } from 'react-router-dom';
-import { Sparkles, Twitter, Github, MessageCircle } from 'lucide-react';
+import { Sparkles, Twitter, Github, MessageCircle, ExternalLink, ShoppingBag } from 'lucide-react';
 
 const footerLinks = {
   Marketplace: [
     { label: 'Browse All', href: '/browse' },
-    { label: 'Categories', href: '/browse' },
-    { label: 'Featured', href: '/browse' },
-    { label: 'New Arrivals', href: '/browse' },
+    { label: 'Games', href: '/games' },
+    { label: 'Music', href: '/music' },
+    { label: 'Software', href: '/software' },
+    { label: 'Gallery', href: '/gallery' },
+    { label: 'Domains', href: '/domains' },
   ],
   Creators: [
     { label: 'Become a Creator', href: '/signup' },
@@ -14,9 +16,20 @@ const footerLinks = {
     { label: 'Upload Asset', href: '/creator/assets/new' },
     { label: 'Earnings', href: '/creator/earnings' },
   ],
+  Services: [
+    { label: 'Hosting', href: '/hosting' },
+    { label: 'Email', href: '/email' },
+    { label: 'Site Builder', href: '/builder' },
+    { label: 'Pricing', href: '/pricing' },
+  ],
+  Company: [
+    { label: 'About Us', href: '/about' },
+    { label: 'Investors', href: '/investors' },
+    { label: 'Contact', href: '/contact' },
+    { label: 'Community', href: '/hub' },
+  ],
   Support: [
     { label: 'Help Center', href: '/help' },
-    { label: 'Contact Us', href: '/contact' },
     { label: 'Status', href: '/status' },
     { label: 'Changelog', href: '/changelog' },
   ],
@@ -44,7 +57,11 @@ export default function Footer() {
           {/* Brand */}
           <div className="col-span-2 md:col-span-3 lg:col-span-2">
             <Link to="/" className="flex items-center gap-2 mb-4">
-              <Sparkles className="w-5 h-5 text-neon-cyan" />
+              <img
+                src="/logo.png"
+                alt="NovAura"
+                className="w-6 h-6 object-contain"
+              />
               <span className="font-heading text-xl font-bold text-gradient-rgb">
                 NovAura
               </span>
@@ -92,6 +109,31 @@ export default function Footer() {
               </ul>
             </div>
           ))}
+        </div>
+
+        {/* Partner Stores Banner */}
+        <div className="mt-10 p-5 rounded-2xl bg-gradient-to-r from-neon-cyan/5 via-neon-magenta/5 to-neon-lime/5 border border-white/10">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <ShoppingBag className="w-5 h-5 text-neon-magenta" />
+              <div>
+                <p className="text-text-primary text-sm font-heading font-semibold">
+                  Home wares & tech items galore? Look no further than right next door!
+                </p>
+                <p className="text-text-secondary text-xs mt-0.5">
+                  Check out our other great products at Catalyst's Corner
+                </p>
+              </div>
+            </div>
+            <a
+              href="https://catalysts-corner.myshopify.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-neon-magenta/10 border border-neon-magenta/30 text-neon-magenta text-sm font-semibold hover:bg-neon-magenta/20 transition-all whitespace-nowrap"
+            >
+              Visit Store <ExternalLink className="w-4 h-4" />
+            </a>
+          </div>
         </div>
 
         {/* Bottom Bar */}

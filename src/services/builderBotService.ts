@@ -38,7 +38,7 @@ export function extractCode(text: string): string {
 }
 
 const TIER_RANK: Record<MembershipTier, number> = {
-  free: 0, creator: 1, studio: 2, catalyst: 3,
+  free: 0, spark: 1, emergent: 2, catalyst: 3, nova: 4, 'catalytic-crew': 5,
 };
 
 /**
@@ -136,7 +136,7 @@ export async function runPipeline(
   options?: PipelineOptions
 ): Promise<string> {
   const tier = options?.tier ?? 'free';
-  const isStudioPlus = TIER_RANK[tier] >= TIER_RANK['studio'];
+  const isStudioPlus = TIER_RANK[tier] >= TIER_RANK['emergent'];
 
   onLog('system', '[BUILDERBOT] Pipeline started.');
   onLog('info',   `[BUILDERBOT] Tier: ${tier.toUpperCase()} | Iterations cap: ${MAX_ITERATIONS} | Convergence: ${(CONVERGENCE_THRESHOLD * 100).toFixed(0)}%`);

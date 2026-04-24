@@ -11,14 +11,18 @@ import {
   Layers,
   Search as SearchIcon,
   Sparkles,
-  Zap
+  Zap,
+  Wand2,
+  Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useUIStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
-import { saveAsset, generateId, createSlug, getAssetById } from '@/services/marketService';
+import { createAsset, generateId, createSlug, getAssetById, uploadAssetFile } from '@/services/marketService';
+import type { BackgroundRemovalResult } from '@/services/artStudioServices';
+import { BackgroundRemovalModal } from '@/components/art/BackgroundRemovalModal';
 import type { LicenseTier, EngineType, Complexity, Asset, PricingType, AssetType } from '@/types';
 
 const steps = [
@@ -89,6 +93,7 @@ export default function CreatorUpload() {
   const [currentStep, setCurrentStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   
   // Form data
   const [title, setTitle] = useState('');
@@ -97,11 +102,14 @@ export default function CreatorUpload() {
   const [assetType, setAssetType] = useState<AssetType>('dev_asset');
   const [category, setCategory] = useState('');
   const [tags] = useState('');
-  const [engineType] = useState<EngineType>('godot');
-  const [complexity] = useState<Complexity>('intermediate');
+  const [contentRating, setContentRating] = useState<ContentRating>('safe');
+  const [engineType, setEngineType] = useState<EngineType>('godot');
+  const [complexity, setComplexity] = useState<Complexity>('intermediate');
   const [licenseTier, setLicenseTier] = useState<LicenseTier>('art_3pct');
-  const [pricingType] = useState<PricingType>('fixed');
+  const [pricingType, setPricingType] = useState<PricingType>('fixed');
   const [price, setPrice] = useState('');
+  const [minPrice, setMinPrice] = useState('');
+  const [suggestedPrice, setSuggestedPrice] = useState('');
   const [agreeTerms, setAgreeTerms] = useState(false);
   
   // Royalty & Foundations
@@ -154,8 +162,22 @@ export default function CreatorUpload() {
   const [screenshots] = useState<string[]>([]);
   const [assetFile, setAssetFile] = useState<File | null>(null);
   
+  // Background removal modal
+  const [showBgRemoval, setShowBgRemoval] = useState(false);
+  const [processedThumbnail, setProcessedThumbnail] = useState<string | null>(null);
+  
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
   const assetFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleBgRemovalComplete = (result: BackgroundRemovalResult) => {
+    setProcessedThumbnail(result.processedImage);
+    setThumbnail(result.processedImage);
+    addToast({
+      type: 'success',
+      title: 'Background Removed',
+      message: 'Your image has been processed successfully.'
+    });
+  };
 
   const handleNext = () => {
     if (currentStep < steps.length - 1) {
@@ -218,52 +240,70 @@ export default function CreatorUpload() {
   };
 
   const handleSubmit = async () => {
-    if (!agreeTerms || !user) return;
+    if (!agreeTerms || !user || !assetFile) return;
     setIsSubmitting(true);
-    
-    const assetId = generateId();
-    const newAsset: Asset = {
-      id: assetId,
-      creatorId: user.id,
-      creator: { ...user },
-      title,
-      slug: createSlug(title),
-      assetType,
-      description,
-      shortDescription,
-      category,
-      tags: tags.split(',').map(t => t.trim()).filter(Boolean),
-      engineType,
-      complexity,
-      contentRating: 'sfw',
-      licenseTier,
-      pricingType,
-      price: licenseTier === 'opensource' ? 0 : Math.round(parseFloat(price || '0') * 100),
-      thumbnailUrl: thumbnail || '',
-      screenshotUrls: screenshots,
-      version: '1.0.0',
-      status: 'pending',
-      downloadCount: 0,
-      viewCount: 0,
-      ratingAverage: 0,
-      ratingCount: 0,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      foundationAssets,
-      revenueSplits: revenueSplits.map(s => ({ id: generateId(), ...s, role: 'collaborator' })),
-      files: assetFile ? [{
-        id: generateId(),
-        fileName: assetFile.name,
-        fileSize: assetFile.size,
-        fileUrl: '',
-        fileType: assetFile.type,
-      }] : [],
-    };
-    
-    saveAsset(newAsset);
-    setIsSubmitting(false);
-    addToast({ type: 'success', title: 'Asset submitted!', message: 'Your asset is now in review.' });
-    navigate('/creator/assets');
+
+    try {
+      // Step 1: Upload main file directly to storage (handles >50MB)
+      const { path: mainFilePath } = await uploadAssetFile(assetFile, `assets/${user.id}`, (progress) => {
+        setUploadProgress(progress);
+      });
+
+      // Convert thumbnail to base64 if present (usually small, so this is okay)
+      let thumbnailData = null;
+      if (thumbnail) {
+        const thumbBase64 = thumbnail.split(',')[1];
+        const thumbType = thumbnail.split(';')[0].split(':')[1];
+        thumbnailData = { name: 'thumbnail.jpg', type: thumbType, base64: thumbBase64 };
+      }
+
+      const payload = {
+        creatorId: user.id,
+        title,
+        description,
+        shortDescription,
+        category,
+        assetType,
+        engineType,
+        complexity,
+        contentRating,
+        licenseTier,
+        price: licenseTier === 'opensource' ? 0 : Math.round(parseFloat(price || '0') * 100),
+        tags: tags.split(',').map((t: string) => t.trim()).filter(Boolean),
+        foundationAssets,
+        revenueSplits: revenueSplits.map(s => ({ ...s, role: 'collaborator' })),
+        // Send storage path instead of base64
+        mainFilePath,
+        mainFileName: assetFile.name,
+        mainFileSize: assetFile.size,
+        mainFileType: assetFile.type || 'application/octet-stream',
+        thumbnailData,
+      };
+
+      const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || 'https://novaura.life/api').replace(/\/$/, '');
+      const authToken = await (window as any).firebase?.auth?.()?.currentUser?.getIdToken?.();
+
+      const response = await fetch(`${BACKEND_URL}/assets/upload`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Upload failed');
+      }
+
+      addToast({ type: 'success', title: 'Asset submitted!', message: 'Your asset is in review. You\'ll be notified when it goes live.' });
+      navigate('/creator/assets');
+    } catch (error: any) {
+      addToast({ type: 'error', title: 'Upload failed', message: error.message || 'Failed to submit asset. Please try again.' });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const canProceed = () => {
@@ -271,7 +311,11 @@ export default function CreatorUpload() {
       case 0: return assetFile !== null && !isAnalyzing;
       case 1: return title && shortDescription && category;
       case 2: return true;
-      case 3: return licenseTier && (pricingType !== 'fixed' || price);
+      case 3: 
+        if (!licenseTier) return false;
+        if (pricingType === 'fixed') return !!price;
+        if (pricingType === 'donation') return !!minPrice && !!suggestedPrice;
+        return true; // Free
       case 4: return agreeTerms;
       default: return true;
     }
@@ -326,11 +370,33 @@ export default function CreatorUpload() {
                 <input type="file" ref={assetFileInputRef} onChange={handleAssetFileUpload} className="hidden" />
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div onClick={() => thumbnailInputRef.current?.click()} className="border-2 border-dashed border-white/10 rounded-lg p-6 text-center cursor-pointer hover:border-white/20">
-                  {thumbnail ? <img src={thumbnail} className="h-20 mx-auto rounded" alt="Preview"/> : <p className="text-sm text-text-muted">Upload Thumbnail</p>}
-                  <input type="file" ref={thumbnailInputRef} onChange={handleThumbnailUpload} className="hidden" />
+                <div className="space-y-2">
+                  <div onClick={() => thumbnailInputRef.current?.click()} className="border-2 border-dashed border-white/10 rounded-lg p-6 text-center cursor-pointer hover:border-white/20">
+                    {thumbnail ? <img src={thumbnail} className="h-20 mx-auto rounded" alt="Preview"/> : <p className="text-sm text-text-muted">Upload Thumbnail</p>}
+                    <input type="file" ref={thumbnailInputRef} onChange={handleThumbnailUpload} className="hidden" accept="image/*" />
+                  </div>
+                  {thumbnail && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowBgRemoval(true)}
+                      className="w-full border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/10"
+                    >
+                      <Wand2 className="w-4 h-4 mr-2" />
+                      Remove Background
+                    </Button>
+                  )}
                 </div>
               </div>
+              
+              {/* Background Removal Modal */}
+              <BackgroundRemovalModal
+                isOpen={showBgRemoval}
+                onClose={() => setShowBgRemoval(false)}
+                imageUrl={thumbnail || ''}
+                onProcessed={handleBgRemovalComplete}
+              />
             </motion.div>
           )}
 
@@ -358,18 +424,88 @@ export default function CreatorUpload() {
                   <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Full description..." rows={6} className="bg-void border-white/10 focus:border-neon-cyan/50 resize-none" />
                   {assetFile && <Sparkles className="absolute right-4 top-4 w-4 h-4 text-neon-cyan/30" />}
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <select value={assetType} onChange={(e) => setAssetType(e.target.value as AssetType)} className="bg-void border border-white/10 rounded-lg p-3 text-text-primary outline-none focus:border-neon-cyan/50">
-                    <option value="dev_asset">Development Asset</option>
-                    <option value="game">Playable Game</option>
-                    <option value="software">Software & Tool</option>
-                  </select>
-                  <select value={category} onChange={(e) => setCategory(e.target.value)} className="bg-void border border-white/10 rounded-lg p-3 text-text-primary outline-none focus:border-neon-cyan/50">
-                    <option value="">Select Category</option>
-                    <option value="frameworks">Frameworks & Tools</option>
-                    <option value="art">Art & Assets</option>
-                    <option value="systems">Systems & Logic</option>
-                  </select>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30 ml-1">Asset Genre</label>
+                    <select 
+                      value={assetType} 
+                      onChange={(e) => setAssetType(e.target.value as AssetType)} 
+                      className="w-full bg-void border border-white/10 rounded-xl p-4 text-text-primary outline-none focus:border-neon-cyan/50 transition-all appearance-none cursor-pointer"
+                    >
+                      <option value="avatar">Avatar (VRM/Character)</option>
+                      <option value="animation">Animation</option>
+                      <option value="dev_asset">3D Model / 2D Asset</option>
+                      <option value="vfx">VFX & Particles</option>
+                      <option value="environment">Environment & Nature</option>
+                      <option value="audio">Audio & Music</option>
+                      <option value="ui">UI & HUD</option>
+                      <option value="game">Playable Game</option>
+                      <option value="software">Software & Tools</option>
+                      <option value="writing">Writing & Lore</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30 ml-1">Maturity Level</label>
+                    <select 
+                      value={contentRating} 
+                      onChange={(e) => setContentRating(e.target.value as ContentRating)} 
+                      className="w-full bg-void border border-white/10 rounded-xl p-4 text-text-primary outline-none focus:border-neon-cyan/50 transition-all appearance-none cursor-pointer"
+                    >
+                      <option value="safe">Safe (G)</option>
+                      <option value="suggestive">Suggestive (PG-13)</option>
+                      <option value="mature">Mature (R)</option>
+                      <option value="explicit">Explicit (X)</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30 ml-1">Specific Classification</label>
+                    <select 
+                      value={category} 
+                      onChange={(e) => setCategory(e.target.value)} 
+                      className="w-full bg-void border border-white/10 rounded-xl p-4 text-text-primary outline-none focus:border-neon-cyan/50 transition-all appearance-none cursor-pointer"
+                    >
+                      <option value="">Select Classification</option>
+                      <optgroup label="Characters & Rigging">
+                        <option value="characters">Characters</option>
+                        <option value="avatars">Avatars</option>
+                        <option value="animations">Animations</option>
+                        <option value="clothing">Clothing & Armor</option>
+                        <option value="weapons">Weapons</option>
+                      </optgroup>
+                      <optgroup label="Visual Effects & Technical">
+                        <option value="vfx">VFX</option>
+                        <option value="particles">Particles</option>
+                        <option value="shaders">Shaders</option>
+                        <option value="spells">Spells</option>
+                      </optgroup>
+                      <optgroup label="World Building">
+                        <option value="terrain">Terrain</option>
+                        <option value="nature">Nature</option>
+                        <option value="architecture">Architecture</option>
+                        <option value="props">Props & Decorations</option>
+                      </optgroup>
+                      <optgroup label="Audio Engineering">
+                        <option value="music">Music</option>
+                        <option value="sfx">SFX</option>
+                        <option value="voice">Voice</option>
+                        <option value="ambient">Ambient</option>
+                      </optgroup>
+                      <optgroup label="Interface & Graphic">
+                        <option value="ui">UI</option>
+                        <option value="hud">HUD</option>
+                        <option value="icons">Icons</option>
+                        <option value="fonts">Fonts</option>
+                      </optgroup>
+                      <optgroup label="Code & Logic">
+                        <option value="scripts">Scripts</option>
+                        <option value="ai_logic">AI Logic</option>
+                        <option value="physics">Physics</option>
+                        <option value="networking">Networking</option>
+                      </optgroup>
+                    </select>
+                  </div>
                 </div>
               </div>
             </motion.div>
@@ -464,20 +600,56 @@ export default function CreatorUpload() {
 
           {currentStep === 3 && (
             <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
-              <h2 className="font-heading text-xl font-bold text-text-primary">Pricing & License</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <h2 className="font-heading text-xl font-bold text-text-primary">License Tier</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 {licenseOptions.map(opt => (
                   <div key={opt.value} onClick={() => setLicenseTier(opt.value)} className={`p-4 border rounded-xl cursor-pointer transition-all ${licenseTier === opt.value ? 'border-neon-cyan bg-neon-cyan/5' : 'border-white/10'}`}>
                     <h3 className="font-bold text-sm">{opt.label}</h3>
-                    <p className="text-xs text-text-muted">{opt.royalty} royalty</p>
+                    <p className="text-xs text-text-muted">{opt.royalty} platform fee</p>
                   </div>
                 ))}
               </div>
+
               {licenseTier !== 'opensource' && (
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted">$</span>
-                  <Input type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Price in USD" className="pl-8 py-6 bg-void" />
-                </div>
+                <>
+                  <h2 className="font-heading text-xl font-bold text-text-primary pt-6 border-t border-white/5">Pricing Model</h2>
+                  <div className="grid grid-cols-3 gap-4 mb-4">
+                    <div onClick={() => setPricingType('fixed')} className={`p-4 border rounded-xl cursor-pointer text-center transition-all ${pricingType === 'fixed' ? 'border-neon-cyan bg-neon-cyan/5' : 'border-white/10'}`}>
+                      <h3 className="font-bold text-sm mb-1">Fixed Price</h3>
+                      <p className="text-xs text-text-muted">Standard commerce</p>
+                    </div>
+                    <div onClick={() => setPricingType('donation')} className={`p-4 border rounded-xl cursor-pointer text-center transition-all ${pricingType === 'donation' ? 'border-neon-cyan bg-neon-cyan/5' : 'border-white/10'}`}>
+                      <h3 className="font-bold text-sm mb-1">Pay What You Want</h3>
+                      <p className="text-xs text-text-muted">Minimum + Suggested Tip</p>
+                    </div>
+                    <div onClick={() => setPricingType('free')} className={`p-4 border rounded-xl cursor-pointer text-center transition-all ${pricingType === 'free' ? 'border-neon-cyan bg-neon-cyan/5' : 'border-white/10'}`}>
+                      <h3 className="font-bold text-sm mb-1">Free/Optional Tip</h3>
+                      <p className="text-xs text-text-muted">100% Free</p>
+                    </div>
+                  </div>
+
+                  {pricingType === 'fixed' && (
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted">$</span>
+                      <Input type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Fixed Price in USD" className="pl-8 py-6 bg-void" />
+                    </div>
+                  )}
+
+                  {pricingType === 'donation' && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="relative">
+                        <label className="text-xs text-text-muted mb-2 block">Minimum Price</label>
+                        <span className="absolute left-4 top-[38px] -translate-y-1/2 text-text-muted">$</span>
+                        <Input type="number" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} placeholder="e.g. 5.00" className="pl-8 py-6 bg-void" />
+                      </div>
+                      <div className="relative">
+                        <label className="text-xs text-text-muted mb-2 block">Suggested Price</label>
+                        <span className="absolute left-4 top-[38px] -translate-y-1/2 text-text-muted">$</span>
+                        <Input type="number" value={suggestedPrice} onChange={(e) => setSuggestedPrice(e.target.value)} placeholder="e.g. 10.00" className="pl-8 py-6 bg-void" />
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </motion.div>
           )}
@@ -501,9 +673,18 @@ export default function CreatorUpload() {
 
       <div className="flex justify-between">
         <Button variant="outline" onClick={handleBack} disabled={currentStep === 0}>Back</Button>
-        <Button className="bg-gradient-rgb text-void font-bold" onClick={currentStep === 4 ? handleSubmit : handleNext} disabled={!canProceed() || isSubmitting}>
-          {currentStep === 4 ? 'Launch Asset' : 'Continue'}
-          <ChevronRight className="w-4 h-4 ml-2" />
+        <Button className="bg-gradient-rgb text-void font-bold min-w-[140px]" onClick={currentStep === 4 ? handleSubmit : handleNext} disabled={!canProceed() || isSubmitting}>
+          {isSubmitting ? (
+            <div className="flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>{uploadProgress > 0 && uploadProgress < 100 ? `${Math.round(uploadProgress)}%` : 'Processing...'}</span>
+            </div>
+          ) : (
+            <>
+              {currentStep === 4 ? 'Launch Asset' : 'Continue'}
+              <ChevronRight className="w-4 h-4 ml-2" />
+            </>
+          )}
         </Button>
       </div>
     </div>

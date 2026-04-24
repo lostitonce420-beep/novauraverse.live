@@ -80,7 +80,7 @@ export default function AdminSetupPage() {
         title: 'Admin account created!',
         message: 'Welcome to NovAura Market, owner!',
       });
-      navigate('/admin');
+      navigate('/admin/dashboard');
     } catch (err: any) {
       addToast({ type: 'error', title: 'Setup failed', message: err.message });
     } finally {

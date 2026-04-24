@@ -1,157 +1,254 @@
 import type { SocialPost, SocialComment } from '@/types';
-import { getUserById } from './userStorage';
+import { db } from '../config/firebase';
+import { 
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  orderBy,
+  limit,
+  serverTimestamp,
+  arrayUnion,
+  arrayRemove,
+  increment
+} from 'firebase/firestore';
 
-const STORAGE_KEYS = {
-  posts: 'novaura_social_posts',
-  comments: 'novaura_social_comments',
-};
+const POSTS_COLLECTION = 'posts';
+const COMMENTS_COLLECTION = 'comments';
 
-// Initialize storage
-export const initializeSocialStorage = () => {
-  const existingPosts = localStorage.getItem(STORAGE_KEYS.posts);
-  if (!existingPosts) {
-    localStorage.setItem(STORAGE_KEYS.posts, JSON.stringify([]));
-  }
-
-  if (!localStorage.getItem(STORAGE_KEYS.comments)) {
-    localStorage.setItem(STORAGE_KEYS.comments, JSON.stringify([]));
-  }
-};
-
-// Get all posts (World Feed)
-export const getGlobalFeed = (): SocialPost[] => {
-  const data = localStorage.getItem(STORAGE_KEYS.posts);
-  const posts: SocialPost[] = data ? JSON.parse(data) : [];
+// Get all posts (World Feed) - Firestore
+export const getGlobalFeed = async (): Promise<SocialPost[]> => {
+  if (!db) return [];
   
-  // Enrich with creator data
-  return posts.map(post => ({
-    ...post,
-    creator: getUserById(post.creatorId)
-  })).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  try {
+    const q = query(
+      collection(db, POSTS_COLLECTION),
+      orderBy('createdAt', 'desc'),
+      limit(100)
+    );
+    
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })) as SocialPost[];
+  } catch (error) {
+    console.error('Error fetching feed:', error);
+    return [];
+  }
 };
 
-// Get posts for a specific user profile
-export const getUserPosts = (userId: string): SocialPost[] => {
-  const allPosts = getGlobalFeed();
-  return allPosts.filter(post => post.creatorId === userId);
+// Get posts for a specific user profile - Firestore
+export const getUserPosts = async (userId: string): Promise<SocialPost[]> => {
+  if (!db) return [];
+  
+  try {
+    const q = query(
+      collection(db, POSTS_COLLECTION),
+      where('creatorId', '==', userId),
+      orderBy('createdAt', 'desc'),
+      limit(50)
+    );
+    
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })) as SocialPost[];
+  } catch (error) {
+    console.error('Error fetching user posts:', error);
+    return [];
+  }
 };
 
-// Create a social post
-export const createPost = (
+// Create a social post - Firestore
+export const createPost = async (
   userId: string,
   content: string,
   mediaUrls: string[] = [],
   tags: string[] = []
-): SocialPost => {
-  const storedPosts = JSON.parse(localStorage.getItem(STORAGE_KEYS.posts) || '[]');
+): Promise<SocialPost | null> => {
+  if (!db) return null;
   
-  const newPost: SocialPost = {
-    id: `post_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    creatorId: userId,
-    content,
-    mediaUrls,
-    likes: 0,
-    comments: 0,
-    likedBy: [],
-    tags,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-
-  storedPosts.push(newPost);
-  localStorage.setItem(STORAGE_KEYS.posts, JSON.stringify(storedPosts));
-
-  return { ...newPost, creator: getUserById(userId) };
-};
-
-// Like/Unlike a post
-export const toggleLike = (postId: string, userId: string): boolean => {
-  const data = localStorage.getItem(STORAGE_KEYS.posts);
-  if (!data) return false;
-  
-  const posts: SocialPost[] = JSON.parse(data);
-  const postIndex = posts.findIndex(p => p.id === postId);
-  
-  if (postIndex === -1) return false;
-  
-  const post = posts[postIndex];
-  const likedBy = post.likedBy || [];
-  const userIndex = likedBy.indexOf(userId);
-  
-  if (userIndex === -1) {
-    // Like
-    likedBy.push(userId);
-    post.likes++;
-  } else {
-    // Unlike
-    likedBy.splice(userIndex, 1);
-    post.likes--;
+  try {
+    const newPost = {
+      creatorId: userId,
+      content,
+      mediaUrls,
+      likes: 0,
+      comments: 0,
+      likedBy: [],
+      tags,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+    
+    const docRef = await addDoc(collection(db, POSTS_COLLECTION), newPost);
+    
+    return {
+      id: docRef.id,
+      ...newPost,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    } as SocialPost;
+  } catch (error) {
+    console.error('Error creating post:', error);
+    return null;
   }
-  
-  post.likedBy = likedBy;
-  localStorage.setItem(STORAGE_KEYS.posts, JSON.stringify(posts));
-  return userIndex === -1; // returns true if liked, false if unliked
 };
 
-// Get comments for a post
-export const getPostComments = (postId: string): SocialComment[] => {
-  const data = localStorage.getItem(STORAGE_KEYS.comments);
-  const comments: SocialComment[] = data ? JSON.parse(data) : [];
+// Like/Unlike a post - Firestore
+export const toggleLike = async (postId: string, userId: string): Promise<boolean> => {
+  if (!db) return false;
   
-  return comments
-    .filter(c => c.postId === postId)
-    .map(c => ({
-      ...c,
-      author: getUserById(c.authorId)
-    }))
-    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-};
-
-// Add a comment
-export const addPostComment = (
-  postId: string,
-  authorId: string,
-  content: string
-): SocialComment => {
-  const data = localStorage.getItem(STORAGE_KEYS.comments);
-  const comments: SocialComment[] = data ? JSON.parse(data) : [];
-  
-  const newComment: SocialComment = {
-    id: `comment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    postId,
-    authorId,
-    content,
-    likes: 0,
-    createdAt: new Date().toISOString(),
-  };
-  
-  comments.push(newComment);
-  localStorage.setItem(STORAGE_KEYS.comments, JSON.stringify(comments));
-  
-  // Update post comment count
-  const postData = localStorage.getItem(STORAGE_KEYS.posts);
-  if (postData) {
-    const posts: SocialPost[] = JSON.parse(postData);
-    const postIndex = posts.findIndex(p => p.id === postId);
-    if (postIndex !== -1) {
-      posts[postIndex].comments++;
-      localStorage.setItem(STORAGE_KEYS.posts, JSON.stringify(posts));
+  try {
+    const postRef = doc(db, POSTS_COLLECTION, postId);
+    const postSnap = await getDoc(postRef);
+    
+    if (!postSnap.exists()) return false;
+    
+    const post = postSnap.data();
+    const likedBy = post.likedBy || [];
+    const isLiked = likedBy.includes(userId);
+    
+    if (isLiked) {
+      // Unlike
+      await updateDoc(postRef, {
+        likedBy: arrayRemove(userId),
+        likes: increment(-1)
+      });
+    } else {
+      // Like
+      await updateDoc(postRef, {
+        likedBy: arrayUnion(userId),
+        likes: increment(1)
+      });
     }
+    
+    return true;
+  } catch (error) {
+    console.error('Error toggling like:', error);
+    return false;
   }
-  
-  return { ...newComment, author: getUserById(authorId) };
 };
 
-// Delete a post
-export const deletePost = (postId: string, userId: string): boolean => {
-  const data = localStorage.getItem(STORAGE_KEYS.posts);
-  if (!data) return false;
+// Check if user liked a post
+export const hasUserLiked = async (postId: string, userId: string): Promise<boolean> => {
+  if (!db) return false;
   
-  const posts: SocialPost[] = JSON.parse(data);
-  const filtered = posts.filter(p => !(p.id === postId && p.creatorId === userId));
-  
-  if (posts.length === filtered.length) return false;
-  
-  localStorage.setItem(STORAGE_KEYS.posts, JSON.stringify(filtered));
-  return true;
+  try {
+    const postRef = doc(db, POSTS_COLLECTION, postId);
+    const postSnap = await getDoc(postRef);
+    
+    if (!postSnap.exists()) return false;
+    
+    const post = postSnap.data();
+    return (post.likedBy || []).includes(userId);
+  } catch (error) {
+    return false;
+  }
 };
+
+// Get comments for a post - Firestore
+export const getComments = async (postId: string): Promise<SocialComment[]> => {
+  if (!db) return [];
+  
+  try {
+    const q = query(
+      collection(db, COMMENTS_COLLECTION),
+      where('postId', '==', postId),
+      orderBy('createdAt', 'asc')
+    );
+    
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })) as SocialComment[];
+  } catch (error) {
+    console.error('Error fetching comments:', error);
+    return [];
+  }
+};
+
+// Add comment to a post - Firestore
+export const addComment = async (
+  postId: string,
+  userId: string,
+  content: string
+): Promise<SocialComment | null> => {
+  if (!db) return null;
+  
+  try {
+    const newComment = {
+      postId,
+      creatorId: userId,
+      content,
+      createdAt: serverTimestamp(),
+    };
+    
+    const docRef = await addDoc(collection(db, COMMENTS_COLLECTION), newComment);
+    
+    // Update post comment count
+    const postRef = doc(db, POSTS_COLLECTION, postId);
+    await updateDoc(postRef, {
+      comments: increment(1)
+    });
+    
+    return {
+      id: docRef.id,
+      ...newComment,
+      createdAt: new Date().toISOString()
+    } as SocialComment;
+  } catch (error) {
+    console.error('Error adding comment:', error);
+    return null;
+  }
+};
+
+// Delete a post - Firestore
+export const deletePost = async (postId: string, userId: string): Promise<boolean> => {
+  if (!db) return false;
+  
+  try {
+    const postRef = doc(db, POSTS_COLLECTION, postId);
+    const postSnap = await getDoc(postRef);
+    
+    if (!postSnap.exists()) return false;
+    
+    const post = postSnap.data();
+    if (post.creatorId !== userId) return false; // Only creator can delete
+    
+    await deleteDoc(postRef);
+    
+    // Delete associated comments
+    const commentsQuery = query(
+      collection(db, COMMENTS_COLLECTION),
+      where('postId', '==', postId)
+    );
+    const commentsSnap = await getDocs(commentsQuery);
+    const deletePromises = commentsSnap.docs.map(doc => deleteDoc(doc.ref));
+    await Promise.all(deletePromises);
+    
+    return true;
+  } catch (error) {
+    console.error('Error deleting post:', error);
+    return false;
+  }
+};
+
+// Legacy initialization (no-op now)
+export const initializeSocialStorage = () => {
+  // Firestore is ready immediately, no initialization needed
+};
+
+// Alias for compatibility
+export const addPostComment = addComment;
+
+// More aliases for compatibility
+export const getPostComments = getComments;

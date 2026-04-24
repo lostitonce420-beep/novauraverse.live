@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -54,30 +54,50 @@ export default function SoftwarePage() {
   const [pricingFilter, setPricingFilter] = useState<'all' | 'free' | 'paid'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [allSoftware, setAllSoftware] = useState<Asset[]>([]);
+  const [_loading, setLoading] = useState(true);
 
-  const allSoftware = useMemo(() => {
-    return getAssets().filter((a: Asset) => a.assetType === 'software' && a.status === 'approved');
+  useEffect(() => {
+    const loadAssets = async () => {
+      try {
+        const assets = await getAssets();
+        // Filter to software assets (by category or tags since backend doesn't have assetType field yet)
+        const softwareAssets = assets.filter((a: Asset) => 
+          a.status === 'approved' && (
+            a.category?.toLowerCase().includes('tool') ||
+            a.category?.toLowerCase().includes('framework') ||
+            a.tags?.some((t: string) => t.toLowerCase().includes('software') || t.toLowerCase().includes('tool'))
+          )
+        );
+        setAllSoftware(softwareAssets);
+      } catch (err) {
+        console.error('Failed to load software:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadAssets();
   }, []);
 
   const filteredSoftware = useMemo(() => {
     let items = [...allSoftware];
 
     if (selectedCategory) {
-      items = items.filter((s: Asset) => s.category === selectedCategory || s.subcategory === selectedCategory);
+      items = items.filter((s: Asset) => s.category?.toLowerCase().includes(selectedCategory.toLowerCase()));
     }
 
     if (pricingFilter === 'free') {
-      items = items.filter((s: Asset) => s.pricingType === 'free' || s.pricingType === 'donation');
+      items = items.filter((s: Asset) => s.price === 0);
     } else if (pricingFilter === 'paid') {
-      items = items.filter((s: Asset) => s.pricingType === 'fixed' && s.price > 0);
+      items = items.filter((s: Asset) => s.price > 0);
     }
 
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       items = items.filter((s: Asset) =>
         s.title.toLowerCase().includes(query) ||
-        s.description.toLowerCase().includes(query) ||
-        s.tags.some((t: string) => t.toLowerCase().includes(query))
+        s.description?.toLowerCase().includes(query) ||
+        s.tags?.some((t: string) => t.toLowerCase().includes(query))
       );
     }
 

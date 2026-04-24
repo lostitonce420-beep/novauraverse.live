@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence, type Variants } from 'framer-motion';
+import { Link } from 'react-router-dom';
 import { Palette, ShoppingBag, Zap, Check, Sparkles, BookOpen, Upload, Compass } from 'lucide-react';
 import { NovAuraLogo } from '@/components/ui/NovAuraLogo';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { kernelStorage } from '../@/kernel/kernelStorage.js';
 
 // Types
 type UserRole = 'creator' | 'buyer' | 'both' | null;
@@ -461,9 +463,9 @@ function CompleteStep({
       </motion.div>
 
       <motion.div variants={itemVariants} className="flex flex-wrap justify-center gap-4">
-        <QuickLink icon={<Compass className="w-4 h-4" />} label="Browse Marketplace" href="/marketplace" />
-        <QuickLink icon={<Upload className="w-4 h-4" />} label="Upload Asset" href="/upload" />
-        <QuickLink icon={<BookOpen className="w-4 h-4" />} label="View Docs" href="/docs" />
+        <QuickLink icon={<Compass className="w-4 h-4" />} label="Browse Marketplace" href="/browse" />
+        <QuickLink icon={<Upload className="w-4 h-4" />} label="Upload Asset" href="/creator/assets/new" />
+        <QuickLink icon={<BookOpen className="w-4 h-4" />} label="View Docs" href="/help" />
       </motion.div>
     </motion.div>
   );
@@ -472,13 +474,13 @@ function CompleteStep({
 // Quick Link Component
 function QuickLink({ icon, label, href }: { icon: React.ReactNode; label: string; href: string }) {
   return (
-    <a
-      href={href}
+    <Link
+      to={href}
       className="flex items-center gap-2 px-4 py-2 rounded-lg bg-void-light border border-void-lighter text-text-secondary hover:text-neon-cyan hover:border-neon-cyan/30 transition-all text-sm"
     >
       {icon}
       <span>{label}</span>
-    </a>
+    </Link>
   );
 }
 
@@ -496,7 +498,7 @@ export function OnboardingFlow() {
   // Load state from localStorage on mount
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      const saved = kernelStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         setState((prev) => ({ ...prev, ...parsed }));
@@ -511,7 +513,7 @@ export function OnboardingFlow() {
   useEffect(() => {
     if (!isLoading) {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        kernelStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       } catch (error) {
         console.error('Failed to save onboarding state:', error);
       }
@@ -561,7 +563,7 @@ export function OnboardingFlow() {
 
   // Reset onboarding (for testing/debugging)
   const resetOnboarding = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY);
+    kernelStorage.removeItem(STORAGE_KEY);
     setState({
       currentStep: 1,
       selectedRole: null,

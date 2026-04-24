@@ -1,24 +1,24 @@
+import { kernelStorage } from '../kernel/kernelStorage.js';
 /**
  * NovAura API Client
- * Thin wrapper around fetch that handles auth tokens and base URL.
+ * Connects to LIVE Polsia backend - NO MOCK DATA
  */
 
-// @ts-ignore
-const API_URL = (import.meta.env.VITE_API_URL as string) || 'http://localhost:3000';
+const API_URL = ((import.meta.env.VITE_BACKEND_URL as string) || 'https://novaura.life/api').replace(/\/$/, '');
 
-const TOKEN_KEY = 'novaura-token';
+const TOKEN_KEY = 'novaura-auth-token';
 
 export const apiClient = {
   getToken(): string | null {
-    return localStorage.getItem(TOKEN_KEY);
+    return kernelStorage.getItem(TOKEN_KEY);
   },
 
   setToken(token: string) {
-    localStorage.setItem(TOKEN_KEY, token);
+    kernelStorage.setItem(TOKEN_KEY, token);
   },
 
   clearToken() {
-    localStorage.removeItem(TOKEN_KEY);
+    kernelStorage.removeItem(TOKEN_KEY);
   },
 
   async request<T = any>(
@@ -63,4 +63,23 @@ export const apiClient = {
       body: JSON.stringify(body),
     });
   },
+  
+  delete<T = any>(path: string) {
+    return this.request<T>(path, { method: 'DELETE' });
+  },
 };
+
+/**
+ * Safe API request that returns null on error instead of throwing
+ */
+export async function safeRequest<T>(
+  requestFn: () => Promise<T>,
+  fallback?: T
+): Promise<T | null> {
+  try {
+    return await requestFn();
+  } catch (err) {
+    console.warn('API request failed:', err);
+    return fallback || null;
+  }
+}

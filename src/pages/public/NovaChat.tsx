@@ -4,6 +4,7 @@ import { Send, Image as ImageIcon, Hash, Users, Zap, Dice5, Trophy, Clock, Alert
 import { socialHubService } from '@/services/SocialHubService';
 import { apiKeyService } from '@/services/ApiKeyService';
 import { useAuthStore } from '@/stores/authStore';
+import { kernelStorage } from '@/kernel/kernelStorage.js';
 
 // ─── Message persistence ──────────────────────────────────────────────────────
 
@@ -18,7 +19,7 @@ const SEED_MESSAGES: ChatMessage[] = [
 
 const loadMessages = (): ChatMessage[] => {
   try {
-    const raw = localStorage.getItem(MESSAGES_KEY);
+    const raw = kernelStorage.getItem(MESSAGES_KEY);
     if (!raw) return SEED_MESSAGES;
     const parsed = JSON.parse(raw) as ChatMessage[];
     return parsed.length > 0 ? parsed : SEED_MESSAGES;
@@ -30,7 +31,7 @@ const loadMessages = (): ChatMessage[] => {
 const saveMessages = (msgs: ChatMessage[]): void => {
   // Keep only the most recent MAX_STORED_MESSAGES entries
   const toStore = msgs.slice(-MAX_STORED_MESSAGES);
-  localStorage.setItem(MESSAGES_KEY, JSON.stringify(toStore));
+  kernelStorage.setItem(MESSAGES_KEY, JSON.stringify(toStore));
 };
 
 // ─── W48 Daily Dice Limit ─────────────────────────────────────────────────────
@@ -47,7 +48,7 @@ const getTodayKey = (): string => new Date().toISOString().slice(0, 10);
 
 const getDiceUsage = (): DiceUsage => {
   try {
-    const raw = localStorage.getItem(DICE_KEY);
+    const raw = kernelStorage.getItem(DICE_KEY);
     if (!raw) return { date: getTodayKey(), count: 0 };
     const parsed = JSON.parse(raw) as DiceUsage;
     if (parsed.date !== getTodayKey()) return { date: getTodayKey(), count: 0 };
@@ -60,7 +61,7 @@ const getDiceUsage = (): DiceUsage => {
 const incrementDiceUsage = (): DiceUsage => {
   const usage = getDiceUsage();
   const updated: DiceUsage = { ...usage, count: usage.count + 1 };
-  localStorage.setItem(DICE_KEY, JSON.stringify(updated));
+  kernelStorage.setItem(DICE_KEY, JSON.stringify(updated));
   return updated;
 };
 

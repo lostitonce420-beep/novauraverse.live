@@ -20,8 +20,7 @@ import {
 import { 
   getAssetsByCreator, 
   getCreatorStats,
-  initializeStorage,
-  getStoredOrders
+  getOrders
 } from '@/services/marketService';
 import { useAuthStore } from '@/stores/authStore';
 import { formatPrice, getLicenseBadgeClass, getLicenseShortName } from '@/utils/format';
@@ -41,28 +40,46 @@ export default function CreatorDashboard() {
   });
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d' | 'all'>('30d');
+  const [_isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    initializeStorage();
-    if (user) {
-      const userAssets = getAssetsByCreator(user.id);
-      setAssets(userAssets);
-      setStats(getCreatorStats(user.id));
+    const loadDashboardData = async () => {
+      if (!user) {
+        setIsLoading(false);
+        return;
+      }
       
-      // Generate recent activity from orders
-      const orders = getStoredOrders();
-      const userAssetIds = userAssets.map(a => a.id);
-      const userOrders = orders.filter(o => 
-        o.items.some(i => userAssetIds.includes(i.assetId))
-      ).slice(0, 5);
-      
-      setRecentActivity(userOrders.map(o => ({
-        type: 'sale',
-        date: o.createdAt,
-        amount: o.totalAmount,
-        buyer: o.buyerId,
-      })));
-    }
+      setIsLoading(true);
+      try {
+        const [userAssets, creatorStats, orders] = await Promise.all([
+          getAssetsByCreator((user as any).id),
+          getCreatorStats((user as any).id),
+          getOrders((user as any).id)
+        ]);
+        
+        setAssets(userAssets);
+        setStats(creatorStats);
+        
+        // Generate recent activity from orders
+        const userAssetIds = userAssets.map(a => a.id);
+        const userOrders = orders.filter(o => 
+          o.items.some(i => userAssetIds.includes(i.assetId))
+        ).slice(0, 5);
+        
+        setRecentActivity(userOrders.map(o => ({
+          type: 'sale',
+          date: o.createdAt,
+          amount: o.totalAmount,
+          buyer: o.buyerId,
+        })));
+      } catch (error) {
+        console.error('Failed to load dashboard data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadDashboardData();
   }, [user]);
 
   // Calculate additional stats
@@ -150,7 +167,7 @@ export default function CreatorDashboard() {
             <option value="90d">Last 90 days</option>
             <option value="all">All time</option>
           </select>
-          <Link to="/creator/upload">
+          <Link to="/creator/assets/new">
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
@@ -239,7 +256,7 @@ export default function CreatorDashboard() {
                 <Box className="w-16 h-16 text-text-muted mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-text-primary mb-2">No assets yet</h3>
                 <p className="text-text-secondary mb-6">Upload your first asset to start earning!</p>
-                <Link to="/creator/upload">
+                <Link to="/creator/assets/new">
                   <motion.div
                     whileHover={{ scale: 1.02 }}
                     className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-rgb text-void font-bold rounded-lg"
@@ -308,7 +325,7 @@ export default function CreatorDashboard() {
           <div className="bg-void-light border border-white/5 rounded-xl p-6">
             <h3 className="font-medium text-text-primary mb-4">Quick Actions</h3>
             <div className="space-y-3">
-              <Link to="/creator/upload">
+              <Link to="/creator/assets/new">
                 <div className="flex items-center gap-3 p-3 bg-void rounded-lg hover:bg-void-light transition-colors cursor-pointer">
                   <div className="w-8 h-8 rounded-lg bg-neon-cyan/10 flex items-center justify-center">
                     <Plus className="w-4 h-4 text-neon-cyan" />
@@ -324,7 +341,7 @@ export default function CreatorDashboard() {
                   <span className="text-text-secondary">View Earnings</span>
                 </div>
               </Link>
-              <Link to="/creator/analytics">
+              <Link to="/creator/earnings">
                 <div className="flex items-center gap-3 p-3 bg-void rounded-lg hover:bg-void-light transition-colors cursor-pointer">
                   <div className="w-8 h-8 rounded-lg bg-neon-lime/10 flex items-center justify-center">
                     <TrendingUp className="w-4 h-4 text-neon-lime" />

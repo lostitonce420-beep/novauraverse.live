@@ -1,3 +1,4 @@
+import { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
@@ -5,94 +6,18 @@ import { AnimatePresence } from 'framer-motion';
 // Error Boundary
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
-// Layouts
+// Layouts — always needed, keep eager
 import MainLayout from '@/components/layout/MainLayout';
 import CreatorLayout from '@/components/layout/CreatorLayout';
 import AdminLayout from '@/components/layout/AdminLayout';
 
-// Public Pages - NovAura Market
-import HomePage from '@/pages/public/HomePage';
-import BrowsePage from '@/pages/public/BrowsePage';
-import AssetDetailPage from '@/pages/public/AssetDetailPage';
-import CreatorProfilePage from '@/pages/public/CreatorProfilePage';
-import UserProfilePage from '@/pages/public/UserProfilePage';
-import SearchPage from '@/pages/public/SearchPage';
-import PrivacyPolicyPage from '@/pages/public/PrivacyPolicyPage';
-import ContactPage from '@/pages/public/ContactPage';
-import HelpCenterPage from '@/pages/public/HelpCenterPage';
-import StatusPage from '@/pages/public/StatusPage';
-import LicensingTermsPage from '@/pages/public/LicensingTermsPage';
-import StudioShowcasePage from '@/pages/public/StudioShowcasePage';
-import MusicMarketplacePage from '@/pages/public/MusicMarketplacePage';
-import GalleryPage from '@/pages/public/GalleryPage';
-import GallerySubmitPage from '@/pages/public/GallerySubmitPage';
-import GamesPage from '@/pages/public/GamesPage';
-import SoftwarePage from '@/pages/public/SoftwarePage';
-import FreeItemsPage from '@/pages/public/FreeItemsPage';
-import DevAuraReaderPage from '@/pages/public/DevAuraReaderPage';
-import FeedPage from '@/pages/public/FeedPage';
-import EcosystemHub from '@/pages/public/EcosystemHub';
-import NovaRegistryPage from '@/pages/public/NovaRegistryPage';
-import RoyaltiesPolicyPage from '@/pages/public/RoyaltiesPolicyPage';
-import TermsOfUsePage from '@/pages/public/TermsOfUsePage';
-import AssetAgreementPage from '@/pages/public/AssetAgreementPage';
-import CookiesPolicyPage from '@/pages/public/CookiesPolicyPage';
-import CreatorAgreementPage from '@/pages/public/CreatorAgreementPage';
-import DomainMarketplace from '@/pages/public/DomainMarketplace';
-import PricingPage from '@/pages/public/PricingPage';
-import APIKeyLibraryPage from '@/pages/public/APIKeyLibraryPage';
-import ChangelogPage from '@/pages/public/ChangelogPage';
-import CreatorLounge from '@/pages/public/CreatorLounge';
-import AuraStrategistPortal from '@/pages/public/AuraStrategistPortal';
-import NovaChat from '@/pages/public/NovaChat';
-
-// Novalow Domains Pages
-import HostingPlansPage from '@/pages/novalow/HostingPlansPage';
-import SiteBuilderPage from '@/pages/novalow/SiteBuilderPage';
-import DevToolsPage from '@/pages/novalow/DevToolsPage';
-import TutorialsPage from '@/pages/novalow/TutorialsPage';
-import SecurityPage from '@/pages/novalow/SecurityPage';
-import PromotePage from '@/pages/novalow/PromotePage';
-
-// Auth Pages
-import LoginPage from '@/pages/public/LoginPage';
-import SignupPage from '@/pages/public/SignupPage';
-import AdminSetupPage from '@/pages/public/AdminSetupPage';
-
-// Buyer Pages
-import CartPage from '@/pages/buyer/CartPage';
-import CheckoutPage from '@/pages/buyer/CheckoutPage';
-import OrdersPage from '@/pages/buyer/OrdersPage';
-import DownloadsPage from '@/pages/buyer/DownloadsPage';
-import WishlistPage from '@/pages/buyer/WishlistPage';
-import SettingsPage from '@/pages/buyer/SettingsPage';
-import AgreementsPage from '@/pages/buyer/AgreementsPage';
-import MessagesPage from '@/pages/buyer/MessagesPage';
-import NotificationsPage from '@/pages/buyer/NotificationsPage';
-
-// Creator Pages
-import CreatorDashboard from '@/pages/creator/CreatorDashboard';
-import CreatorAssets from '@/pages/creator/CreatorAssets';
-import CreatorUpload from '@/pages/creator/CreatorUpload';
-import CreatorEarnings from '@/pages/creator/CreatorEarnings';
-import CreatorSettings from '@/pages/creator/CreatorSettings';
-import NovaIDE from '@/pages/creator/NovaIDE';
-
-// Admin Pages
-import AdminDashboard from '@/pages/admin/AdminDashboard';
-import AdminAssets from '@/pages/admin/AdminAssets';
-import AdminUsers from '@/pages/admin/AdminUsers';
-import AdminOrders from '@/pages/admin/AdminOrders';
-import AdminCommandCenter from '@/pages/admin/AdminCommandCenter';
-import NovaSysPage from '@/pages/public/NovaSysPage';
-import StaffLoginPage from '@/pages/public/StaffLoginPage';
-
-// Components
+// Components — structural, keep eager
 import ProtectedRoute from '@/components/ProtectedRoute';
 import ToastContainer from '@/components/ToastContainer';
 import ScrollToTop from '@/components/ScrollToTop';
 import FloatingNovaChat from '@/components/ui/FloatingNovaChat';
 import TrainingConsentModal from '@/components/ui/TrainingConsentModal';
+import RouteAutoRepairProtocol from '@/components/routing/RouteAutoRepairProtocol';
 
 // Stores
 import { useAuthStore } from '@/stores/authStore';
@@ -103,7 +28,99 @@ import { GlobalBadgeAwardOverlay } from '@/components/ui/AuraBadgeAward';
 import { useUIStore } from '@/stores/uiStore';
 
 import './App.css';
-import { useEffect } from 'react';
+
+// ── Landing page — eager (it's the front door, always first paint) ──
+
+// ── Lazy-loaded pages — only fetched when navigated to ──────────────
+
+// Public Pages - NovAura Market
+const HomePage = lazy(() => import('@/pages/public/HomePage'));
+const AISocialPage = lazy(() => import('@/pages/public/AISocialPage'));
+const PlatformHomePage = lazy(() => import('@/pages/public/PlatformHomePage'));
+const BrowsePage = lazy(() => import('@/pages/public/BrowsePage'));
+const AssetDetailPage = lazy(() => import('@/pages/public/AssetDetailPage'));
+const CreatorProfilePage = lazy(() => import('@/pages/public/CreatorProfilePage'));
+const UserProfilePage = lazy(() => import('@/pages/public/UserProfilePage'));
+const SearchPage = lazy(() => import('@/pages/public/SearchPage'));
+const PrivacyPolicyPage = lazy(() => import('@/pages/public/PrivacyPolicyPage'));
+const ContactPage = lazy(() => import('@/pages/public/ContactPage'));
+const HelpCenterPage = lazy(() => import('@/pages/public/HelpCenterPage'));
+const StatusPage = lazy(() => import('@/pages/public/StatusPage'));
+const LicensingTermsPage = lazy(() => import('@/pages/public/LicensingTermsPage'));
+const StudioShowcasePage = lazy(() => import('@/pages/public/StudioShowcasePage'));
+const MusicMarketplacePage = lazy(() => import('@/pages/public/MusicMarketplacePage'));
+const GalleryPage = lazy(() => import('@/pages/public/GalleryPage'));
+const GallerySubmitPage = lazy(() => import('@/pages/public/GallerySubmitPage'));
+const GamesPage = lazy(() => import('@/pages/public/GamesPage'));
+const SoftwarePage = lazy(() => import('@/pages/public/SoftwarePage'));
+const FreeItemsPage = lazy(() => import('@/pages/public/FreeItemsPage'));
+const DevAuraReaderPage = lazy(() => import('@/pages/public/DevAuraReaderPage'));
+const FeedPage = lazy(() => import('@/pages/public/FeedPage'));
+const EcosystemHub = lazy(() => import('@/pages/public/EcosystemHub'));
+const NovaRegistryPage = lazy(() => import('@/pages/public/NovaRegistryPage'));
+const RoyaltiesPolicyPage = lazy(() => import('@/pages/public/RoyaltiesPolicyPage'));
+const TermsOfUsePage = lazy(() => import('@/pages/public/TermsOfUsePage'));
+const AssetAgreementPage = lazy(() => import('@/pages/public/AssetAgreementPage'));
+const CookiesPolicyPage = lazy(() => import('@/pages/public/CookiesPolicyPage'));
+const CreatorAgreementPage = lazy(() => import('@/pages/public/CreatorAgreementPage'));
+const DomainMarketplace = lazy(() => import('@/pages/public/DomainMarketplace'));
+const ShopPage = lazy(() => import('@/pages/public/ShopPage'));
+const PricingPage = lazy(() => import('@/pages/public/PricingPage'));
+const APIKeyLibraryPage = lazy(() => import('@/pages/public/APIKeyLibraryPage'));
+const ChangelogPage = lazy(() => import('@/pages/public/ChangelogPage'));
+const CreatorLounge = lazy(() => import('@/pages/public/CreatorLounge'));
+const AuraStrategistPortal = lazy(() => import('@/pages/public/AuraStrategistPortal'));
+const NovaChat = lazy(() => import('@/pages/public/NovaChat'));
+const VoiceStudioPage = lazy(() => import('./pages/public/VoiceStudioPage'));
+const MusicStudioPage = lazy(() => import('@/pages/public/MusicStudioPage'));
+const MusicToolsPage = lazy(() => import('@/pages/public/MusicToolsPage'));
+const AboutPage = lazy(() => import('@/pages/public/AboutPage'));
+const InvestorPortalPage = lazy(() => import('@/pages/public/InvestorPortalPage'));
+const EmailServicesPage = lazy(() => import('@/pages/public/EmailServicesPage'));
+const WebmailPage = lazy(() => import('@/pages/public/WebmailPage'));
+
+// Novalow Domains Pages
+const HostingPlansPage = lazy(() => import('@/pages/novalow/HostingPlansPage'));
+const SiteBuilderPage = lazy(() => import('@/pages/novalow/SiteBuilderPage'));
+const DevToolsPage = lazy(() => import('@/pages/novalow/DevToolsPage'));
+const TutorialsPage = lazy(() => import('@/pages/novalow/TutorialsPage'));
+const SecurityPage = lazy(() => import('@/pages/novalow/SecurityPage'));
+const PromotePage = lazy(() => import('@/pages/novalow/PromotePage'));
+
+// Auth Pages
+const LoginPage = lazy(() => import('@/pages/public/LoginPage'));
+const SignupPage = lazy(() => import('@/pages/public/SignupPage'));
+const AdminSetupPage = lazy(() => import('@/pages/public/AdminSetupPage'));
+const NovaSysPage = lazy(() => import('@/pages/public/NovaSysPage'));
+const StaffLoginPage = lazy(() => import('@/pages/public/StaffLoginPage'));
+
+// Buyer Pages
+const CartPage = lazy(() => import('@/pages/buyer/CartPage'));
+const CheckoutPage = lazy(() => import('@/pages/buyer/CheckoutPage'));
+const OrdersPage = lazy(() => import('@/pages/buyer/OrdersPage'));
+const DownloadsPage = lazy(() => import('@/pages/buyer/DownloadsPage'));
+const WishlistPage = lazy(() => import('@/pages/buyer/WishlistPage'));
+const SettingsPage = lazy(() => import('@/pages/buyer/SettingsPage'));
+const AgreementsPage = lazy(() => import('@/pages/buyer/AgreementsPage'));
+const MessagesPage = lazy(() => import('@/pages/buyer/MessagesPage'));
+const NotificationsPage = lazy(() => import('@/pages/buyer/NotificationsPage'));
+const CreatorApplication = lazy(() => import('@/pages/buyer/CreatorApplication'));
+
+// Creator Pages
+const CreatorDashboard = lazy(() => import('@/pages/creator/CreatorDashboard'));
+const CreatorAssets = lazy(() => import('@/pages/creator/CreatorAssets'));
+const CreatorUpload = lazy(() => import('@/pages/creator/CreatorUpload'));
+const CreatorEarnings = lazy(() => import('@/pages/creator/CreatorEarnings'));
+const CreatorSettings = lazy(() => import('@/pages/creator/CreatorSettings'));
+const NovaIDE = lazy(() => import('@/pages/creator/NovaIDE'));
+const TCGCardForge = lazy(() => import('@/pages/creator/TCGCardForge'));
+
+// Admin Pages
+const AdminDashboard = lazy(() => import('@/pages/admin/AdminDashboard'));
+const AdminAssets = lazy(() => import('@/pages/admin/AdminAssets'));
+const AdminUsers = lazy(() => import('@/pages/admin/AdminUsers'));
+const AdminOrders = lazy(() => import('@/pages/admin/AdminOrders'));
+const AdminCommandCenter = lazy(() => import('@/pages/admin/AdminCommandCenter'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -125,7 +142,27 @@ function AppRoutes() {
   return (
     <AnimatePresence mode="wait">
       <ScrollToTop />
+      <RouteAutoRepairProtocol />
       <Routes>
+            {/* 
+              ⚠️⚠️⚠️  ROUTING WARNING - DO NOT MODIFY WITHOUT APPROVAL  ⚠️⚠️⚠️
+              
+              The following routes are INTENTIONALLY wired to specific locations.
+              Landing page buttons are already correctly configured - DO NOT CHANGE.
+              
+              /platform    = AI Social Platform (NOT the marketplace)
+              /browse      = Market/Assets (the marketplace)
+              /novalow     = Domains & Hosting services
+              /domains     = Domain marketplace
+              
+              If you're tempted to change these, ask first. The routing is fragile
+              and has been fixed multiple times. Don't break it again!
+              
+              - Platform = AI Social (where AIs socialize)
+              - Market/Browse = Asset marketplace (where humans buy/sell)
+              - NovaLow = Domain/hosting services
+            */}
+            
             {/* Public Routes */}
             <Route element={<MainLayout />}>
               {/* NovAura Market Routes */}
@@ -138,7 +175,7 @@ function AppRoutes() {
               <Route path="/legal/privacy" element={<PrivacyPolicyPage />} />
               <Route path="/legal/licensing" element={<LicensingTermsPage />} />
               <Route path="/contact" element={<ContactPage />} />
-              <Route path="/studio" element={<StudioShowcasePage />} />
+              <Route path="/studio-showcase" element={<StudioShowcasePage />} />
               <Route path="/music" element={<MusicMarketplacePage />} />
               <Route path="/gallery" element={<GalleryPage />} />
               <Route path="/gallery/submit" element={<GallerySubmitPage />} />
@@ -161,9 +198,24 @@ function AppRoutes() {
               <Route path="/creators" element={<CreatorLounge />} />
               <Route path="/strategist" element={<AuraStrategistPortal />} />
               <Route path="/chat" element={<NovaChat />} />
+              <Route path="/voice-studio" element={<VoiceStudioPage />} />
+              <Route path="/music-studio" element={<MusicStudioPage />} />
+              <Route path="/ai-studio" element={<StudioShowcasePage />} />
+              <Route path="/studio" element={<Navigate to="/music-studio" replace />} />
+              <Route path="/practice" element={<MusicToolsPage />} />
               <Route path="/pricing" element={<PricingPage />} />
               <Route path="/api-keys" element={<APIKeyLibraryPage />} />
               
+              {/* Shop — Catalyst's Corner */}
+              <Route path="/shop" element={<ShopPage />} />
+
+              {/* Platform Home - Hub with links to sections */}
+              <Route path="*" element={<PlatformHomePage />} />
+              
+              {/* NovaLow - Domains & Hosting */}
+              <Route path="/novalow" element={<Navigate to="/domains" replace />} />
+              <Route path="/novalow/*" element={<Navigate to="/domains" replace />} />
+
               {/* Novalow Domains Routes */}
               <Route path="/domains" element={<DomainMarketplace />} />
               <Route path="/hosting" element={<HostingPlansPage />} />
@@ -172,6 +224,12 @@ function AppRoutes() {
               <Route path="/tutorials" element={<TutorialsPage />} />
               <Route path="/security" element={<SecurityPage />} />
               <Route path="/promote" element={<PromotePage />} />
+
+              {/* Ecosystem Pages */}
+              <Route path="/about" element={<AboutPage />} />
+              <Route path="/investors" element={<InvestorPortalPage />} />
+              <Route path="/email" element={<EmailServicesPage />} />
+              <Route path="/webmail" element={<WebmailPage />} />
             </Route>
 
             {/* Auth Routes */}
@@ -202,6 +260,7 @@ function AppRoutes() {
                 <Route path="/messages" element={<MessagesPage />} />
                 <Route path="/messages/:userId" element={<MessagesPage />} />
                 <Route path="/notifications" element={<NotificationsPage />} />
+                <Route path="/creator/apply" element={<CreatorApplication />} />
               </Route>
             </Route>
 
@@ -214,6 +273,7 @@ function AppRoutes() {
                 <Route path="/creator/earnings" element={<CreatorEarnings />} />
                 <Route path="/creator/settings" element={<CreatorSettings />} />
                 <Route path="/ide" element={<NovaIDE />} />
+                <Route path="/creator/tcg-forge" element={<TCGCardForge />} />
               </Route>
             </Route>
 
@@ -227,6 +287,17 @@ function AppRoutes() {
                 <Route path="/admin/command-center" element={<AdminCommandCenter />} />
               </Route>
             </Route>
+
+            {/* Legacy Path Auto-Repair Aliases */}
+            <Route path="/marketplace" element={<Navigate to="/browse" replace />} />
+            <Route path="/upload" element={<Navigate to="/creator/assets/new" replace />} />
+            <Route path="/creator/upload" element={<Navigate to="/creator/assets/new" replace />} />
+            <Route path="/creator/analytics" element={<Navigate to="/creator/earnings" replace />} />
+            <Route path="/settings/notifications" element={<Navigate to="/notifications" replace />} />
+            <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
+            <Route path="/docs" element={<Navigate to="/help" replace />} />
+            <Route path="/legal/faq" element={<Navigate to="/help" replace />} />
+            <Route path="/legal/indemnification" element={<Navigate to="/legal/terms" replace />} />
 
             {/* Catch all */}
             <Route path="*" element={<Navigate to="/" />} />
@@ -263,7 +334,7 @@ function App() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <Router>
+        <Router basename="/platform">
           <ScrollToTop />
           <AppRoutes />
           <ToastContainer />

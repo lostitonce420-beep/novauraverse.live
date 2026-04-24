@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { kernelStorage } from '@/kernel/kernelStorage.js';
 
 interface Toast {
   id: string;
@@ -63,16 +64,16 @@ interface UIState {
 
 export const useUIStore = create<UIState>((set, get) => ({
   // Performance
-  performanceMode: localStorage.getItem('performance_mode') === 'true',
+  performanceMode: kernelStorage.getItem('performance_mode') === 'true',
   togglePerformanceMode: () => {
     const newVal = !get().performanceMode;
-    localStorage.setItem('performance_mode', String(newVal));
+    kernelStorage.setItem('performance_mode', String(newVal));
     set({ performanceMode: newVal });
   },
-  webGPUEnabled: localStorage.getItem('webgpu_enabled') === 'true',
+  webGPUEnabled: kernelStorage.getItem('webgpu_enabled') === 'true',
   toggleWebGPU: () => {
     const newVal = !get().webGPUEnabled;
-    localStorage.setItem('webgpu_enabled', String(newVal));
+    kernelStorage.setItem('webgpu_enabled', String(newVal));
     set({ webGPUEnabled: newVal });
   },
 

@@ -7,6 +7,7 @@
 
 import type { Asset } from '@/types';
 import { getAssetById } from './marketService';
+import { kernelStorage } from '@/kernel/kernelStorage.js';
 
 // Storage key for localStorage
 const WISHLIST_STORAGE_KEY = 'novaura_wishlist';
@@ -29,7 +30,7 @@ export interface SyncResult {
  */
 export const getWishlist = (): WishlistServiceItem[] => {
   try {
-    const stored = localStorage.getItem(WISHLIST_STORAGE_KEY);
+    const stored = kernelStorage.getItem(WISHLIST_STORAGE_KEY);
     if (stored) {
       return JSON.parse(stored);
     }
@@ -44,7 +45,7 @@ export const getWishlist = (): WishlistServiceItem[] => {
  */
 export const saveWishlist = (items: WishlistServiceItem[]): void => {
   try {
-    localStorage.setItem(WISHLIST_STORAGE_KEY, JSON.stringify(items));
+    kernelStorage.setItem(WISHLIST_STORAGE_KEY, JSON.stringify(items));
   } catch (error) {
     console.error('Error saving wishlist to localStorage:', error);
   }
@@ -119,13 +120,15 @@ export const clearWishlist = (): void => {
 
 /**
  * Move an item from wishlist to cart
- * Returns the asset if successful, null if not found
+ * Returns the assetId if successful, null if not found
+ * NOTE: Component must fetch the asset data separately
  */
-export const moveToCart = (assetId: string): Asset | null => {
-  const asset = getAssetById(assetId);
-  if (asset) {
+export const moveToCart = (assetId: string): string | null => {
+  const wishlist = getWishlist();
+  const item = wishlist.find(w => w.assetId === assetId);
+  if (item) {
     removeFromWishlist(assetId);
-    return asset;
+    return assetId;
   }
   return null;
 };
@@ -138,14 +141,32 @@ export const getWishlistCount = (): number => {
 };
 
 /**
- * Get full asset data for all wishlist items
+ * Get full asset data for all wishlist items (ASYNC - fetches from API)
  */
-export const getWishlistAssets = (): Array<{ item: WishlistServiceItem; asset: Asset | null }> => {
+export const getWishlistAssets = async (): Promise<Array<{ item: WishlistServiceItem; asset: Asset | null }>> => {
   const wishlist = getWishlist();
-  return wishlist.map(item => ({
-    item,
-    asset: getAssetById(item.assetId) ?? null,
-  }));
+  const assets = await Promise.all(
+    wishlist.map(async item => {
+      try {
+        const asset = await getAssetById(item.assetId);
+        return { item, asset };
+      } catch {
+        return { item, asset: null };
+      }
+    })
+  );
+  return assets;
+};
+
+/**
+ * Get wishlist items with asset data from cache/localStorage (SYNCHRONOUS)
+ * Used by the store for synchronous operations
+ */
+export const getWishlistAssetsSync = (): Array<{ item: WishlistServiceItem; asset: Asset | null }> => {
+  const wishlist = getWishlist();
+  // Return items without fetching full asset data
+  // Asset data will be fetched separately by components
+  return wishlist.map(item => ({ item, asset: null }));
 };
 
 /**
@@ -180,7 +201,7 @@ export const syncToServer = async (_userId: string): Promise<SyncResult> => {
   await new Promise(resolve => setTimeout(resolve, 500));
   
   // Store server sync timestamp
-  localStorage.setItem('novaura_wishlist_last_sync', new Date().toISOString());
+  kernelStorage.setItem('novaura_wishlist_last_sync', new Date().toISOString());
   
   return {
     success: true,

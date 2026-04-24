@@ -1,505 +1,473 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
-  Check, X, Zap, Crown, Star,
-  Bot, Image, Video, Code2, Globe, Cpu, Headphones, Key
+  Check, Zap, Star, Flame, Users, Sparkles, Crown, Coins, Loader2, AlertCircle, TrendingUp, Award, ArrowRight
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { useAuthStore } from '@/stores/authStore';
-import { TIER_CONFIG, type MembershipTier } from '@/config/tierConfig';
+import { CREDIT_PACKS } from '@/config/tierConfig';
+import { auth } from '@/config/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 
-// ── Catalyst badge SVG (sword through Old English C) ─────────────────────────
-const CatalystBadge: React.FC<{ size?: number }> = ({ size = 28 }) => (
-  <svg width={size} height={size} viewBox="0 0 28 28" fill="none">
-    {/* Old English C */}
-    <text x="4" y="21" fontFamily="serif" fontSize="20" fontWeight="900" fill="#FBBF24" opacity="0.9">
-      ©
-    </text>
-    {/* Sword overlay — blade */}
-    <line x1="14" y1="2" x2="14" y2="22" stroke="#FBBF24" strokeWidth="1.5" strokeLinecap="round" />
-    {/* Guard */}
-    <line x1="10" y1="8" x2="18" y2="8" stroke="#FBBF24" strokeWidth="1.5" strokeLinecap="round" />
-    {/* Pommel */}
-    <circle cx="14" cy="24" r="1.5" fill="#FBBF24" />
-  </svg>
-);
-
-// ── Tier icon map ─────────────────────────────────────────────────────────────
-const TIER_ICONS: Record<MembershipTier, React.ReactNode> = {
-  free:     <Star className="w-5 h-5" />,
-  creator:  <Zap className="w-5 h-5" />,
-  studio:   <Crown className="w-5 h-5" />,
-  catalyst: <CatalystBadge size={22} />,
-};
-
-// ── Feature row helper ────────────────────────────────────────────────────────
-interface FeatureRow {
-  label: string;
-  icon?: React.ReactNode;
-  values: Record<MembershipTier, string | boolean>;
-}
-
-const FEATURES: FeatureRow[] = [
+// ── Membership Tiers (from WebOS BillingWindow) ───────────────────────────────
+const PLANS = [
   {
-    label: 'Credits / day',
-    icon: <Zap className="w-3.5 h-3.5" />,
-    values: { free: '50', creator: '200', studio: '600', catalyst: '3,000' },
+    id: 'free',
+    name: 'Free',
+    subtitle: 'The Beginning',
+    price: 0,
+    description: 'Start your journey',
+    features: ['7 credits/day', '20 credits/month cap', 'Core WebOS access', 'Local AI (Ollama/LM Studio)', 'Community Support'],
+    creditsPerDay: 7,
+    creditsPerMonth: 20,
+    color: 'from-gray-400 to-gray-600',
+    glow: 'rgba(156,163,175,0.3)',
+    icon: Zap,
   },
   {
-    label: 'BuilderBot runs / month',
-    icon: <Bot className="w-3.5 h-3.5" />,
-    values: { free: '20', creator: '100', studio: '300', catalyst: '1,500' },
+    id: 'spark',
+    name: 'Spark',
+    subtitle: 'Wonder Into',
+    price: 9.99,
+    description: 'Ignite your curiosity',
+    features: ['30 credits/day', '100 credits/month cap', 'BYOK Support', 'WebOS access (limited)', 'Standard Support'],
+    creditsPerDay: 30,
+    creditsPerMonth: 100,
+    color: 'from-cyan-400 to-blue-500',
+    glow: 'rgba(34,211,238,0.4)',
+    icon: Sparkles,
   },
   {
-    label: 'Daily run cap',
-    icon: <Cpu className="w-3.5 h-3.5" />,
-    values: { free: '5 / day', creator: 'Uncapped', studio: 'Uncapped', catalyst: 'Uncapped' },
+    id: 'emergent',
+    name: 'Emergent',
+    subtitle: 'Discovering',
+    price: 17.99,
+    description: 'Find your flow',
+    features: ['100 credits/day', '250 credits/month cap', 'Full WebOS access', 'BYOK Support', 'Standard Support'],
+    creditsPerDay: 100,
+    creditsPerMonth: 250,
+    color: 'from-fuchsia-400 to-purple-600',
+    glow: 'rgba(232,121,249,0.4)',
+    icon: Star,
   },
   {
-    label: 'Bring your own API keys',
-    icon: <Key className="w-3.5 h-3.5" />,
-    values: { free: false, creator: true, studio: true, catalyst: true },
+    id: 'catalyst',
+    name: 'Catalyst',
+    subtitle: 'Biggest Bang for Your Buck',
+    price: 29.99,
+    description: 'Accelerate everything',
+    features: ['250 credits/day', '500 credits/month cap', '1 Exhaustive Research/mo', 'Priority Inference', 'Live Support'],
+    creditsPerDay: 250,
+    creditsPerMonth: 500,
+    color: 'from-amber-400 via-orange-400 to-pink-500',
+    glow: 'rgba(251,191,36,0.5)',
+    icon: Flame,
+    popular: true,
   },
   {
-    label: 'Local AI (Ollama / LM Studio)',
-    icon: <Cpu className="w-3.5 h-3.5" />,
-    values: { free: 'Unlimited', creator: 'Unlimited', studio: 'Unlimited', catalyst: 'Unlimited' },
+    id: 'nova',
+    name: 'Nova',
+    subtitle: 'Ultimate',
+    price: 75.00,
+    description: 'Maximum power',
+    features: ['500 credits/day', '750 credits/month cap', '2 Exhaustive Research/mo', 'Advanced Analytics', 'Secrets Manager'],
+    creditsPerDay: 500,
+    creditsPerMonth: 750,
+    color: 'from-rose-400 via-pink-500 to-violet-600',
+    glow: 'rgba(244,63,94,0.5)',
+    icon: Crown,
   },
   {
-    label: 'Web OS access',
-    icon: <Globe className="w-3.5 h-3.5" />,
-    values: { free: false, creator: 'Limited', studio: 'Full', catalyst: 'Full' },
-  },
-  {
-    label: 'Image generation',
-    icon: <Image className="w-3.5 h-3.5" />,
-    values: { free: '3 cr each', creator: '3 cr each', studio: '3 cr each', catalyst: '1.5 cr each' },
-  },
-  {
-    label: 'Video generation',
-    icon: <Video className="w-3.5 h-3.5" />,
-    values: { free: '100 cr / 4s', creator: '100 cr / 4s', studio: '100 cr / 4s', catalyst: '50 cr / 4s' },
-  },
-  {
-    label: 'Image editing',
-    icon: <Image className="w-3.5 h-3.5" />,
-    values: { free: '1 cr / edit', creator: '1 cr / edit', studio: '1 cr / edit', catalyst: '0.5 cr / edit' },
-  },
-  {
-    label: 'Asset marketplace',
-    icon: <Code2 className="w-3.5 h-3.5" />,
-    values: { free: true, creator: true, studio: true, catalyst: true },
-  },
-  {
-    label: 'Publish & sell assets',
-    icon: <Code2 className="w-3.5 h-3.5" />,
-    values: { free: true, creator: true, studio: true, catalyst: true },
-  },
-  {
-    label: 'Priority inference',
-    icon: <Zap className="w-3.5 h-3.5" />,
-    values: { free: false, creator: false, studio: false, catalyst: true },
-  },
-  {
-    label: 'Support',
-    icon: <Headphones className="w-3.5 h-3.5" />,
-    values: { free: 'Community', creator: 'Community', studio: 'Priority queue', catalyst: 'Live direct' },
-  },
-  {
-    label: 'Free company assets',
-    icon: <Star className="w-3.5 h-3.5" />,
-    values: { free: false, creator: false, studio: '2 assets', catalyst: '3 assets' },
-  },
-  {
-    label: 'Aura Nova template discount',
-    icon: <Code2 className="w-3.5 h-3.5" />,
-    values: { free: false, creator: false, studio: 'Member discount', catalyst: '20% off' },
-  },
-  {
-    label: 'Beta access & early releases',
-    icon: <Zap className="w-3.5 h-3.5" />,
-    values: { free: false, creator: false, studio: false, catalyst: true },
-  },
-  {
-    label: 'Catalyst ⚔ badge',
-    icon: <CatalystBadge size={14} />,
-    values: { free: false, creator: false, studio: false, catalyst: true },
+    id: 'catalytic-crew',
+    name: 'Catalytic Crew',
+    subtitle: 'Enterprise',
+    price: 349.99,
+    description: 'For teams and organizations',
+    features: ['1000 credits/day', '5000 credits/month cap', '5 Exhaustive Research/mo', 'SSO & SAML ready', 'Dedicated Support'],
+    creditsPerDay: 1000,
+    creditsPerMonth: 5000,
+    color: 'from-indigo-400 via-purple-500 to-pink-500',
+    glow: 'rgba(99,102,241,0.5)',
+    icon: Users,
   },
 ];
 
-const TIERS: MembershipTier[] = ['free', 'creator', 'studio', 'catalyst'];
-
-const ACCENT: Record<MembershipTier, string> = {
-  free:     'border-white/10',
-  creator:  'border-neon-cyan/40',
-  studio:   'border-neon-violet/40',
-  catalyst: 'border-yellow-400/40',
-};
-
-const GLOW: Record<MembershipTier, string> = {
-  free:     '',
-  creator:  'shadow-[0_0_30px_rgba(0,240,255,0.08)]',
-  studio:   'shadow-[0_0_30px_rgba(139,92,246,0.1)]',
-  catalyst: 'shadow-[0_0_40px_rgba(251,191,36,0.12)]',
-};
-
-const BTN_CLASS: Record<MembershipTier, string> = {
-  free:     'bg-white/5 text-white hover:bg-white/10',
-  creator:  'bg-neon-cyan text-void font-bold hover:shadow-[0_0_20px_rgba(0,240,255,0.4)]',
-  studio:   'bg-neon-violet text-white font-bold hover:shadow-[0_0_20px_rgba(139,92,246,0.4)]',
-  catalyst: 'bg-yellow-400 text-black font-bold hover:shadow-[0_0_20px_rgba(251,191,36,0.4)]',
-};
-
-function renderValue(v: string | boolean) {
-  if (v === true)  return <Check className="w-4 h-4 text-green-400 mx-auto" />;
-  if (v === false) return <X className="w-4 h-4 text-white/20 mx-auto" />;
-  return <span className="text-[11px] text-text-secondary">{v}</span>;
-}
-
-// ── Model credit cost callout ─────────────────────────────────────────────────
-const ModelCostCallout: React.FC = () => (
-  <div className="mt-16 max-w-3xl mx-auto">
-    <h3 className="text-center text-sm font-bold uppercase tracking-widest text-text-muted mb-2">
-      AI Model Credit Cost
-    </h3>
-    <p className="text-center text-[11px] text-text-muted mb-6">
-      Claude model quality scales with your tier automatically.
-    </p>
-    {/* Gemini tier row */}
-    <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400/70 mb-2">Gemini</p>
-    <div className="grid grid-cols-3 gap-3 mb-4">
-      {[
-        { label: 'Gemini 3.0 Flash', cost: '10 cr', color: 'border-blue-400/20 text-blue-300',  note: 'Free · Creator' },
-        { label: 'Gemini 3.0 Pro',   cost: '10 cr', color: 'border-blue-400/40 text-blue-400',  note: 'Studio' },
-        { label: 'Gemini 3.1 Pro',   cost: '5 cr',  color: 'border-yellow-400/30 text-yellow-400', note: 'Catalyst (½ price)' },
-      ].map((m) => (
-        <div key={m.label} className={`rounded-xl border p-4 bg-void-light text-center ${m.color}`}>
-          <div className="text-[10px] font-bold mb-1">{m.label}</div>
-          <div className={`text-lg font-black font-mono`}>{m.cost}</div>
-          <div className="text-[9px] text-text-muted mt-1">{m.note}</div>
-        </div>
-      ))}
+// ── RGB Animated Border ───────────────────────────────────────────────────────
+const RGBCard: React.FC<{ children: React.ReactNode; plan: typeof PLANS[0]; isPopular?: boolean }> = ({ 
+  children, 
+  plan,
+  isPopular 
+}) => (
+  <div className="relative group h-full">
+    {/* Animated RGB border */}
+    <div 
+      className={`absolute -inset-[1px] rounded-2xl opacity-60 group-hover:opacity-100 transition-opacity duration-500 ${isPopular ? 'opacity-100' : ''}`}
+      style={{
+        background: `linear-gradient(90deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #9400d3, #ff00ff, #ff0000)`,
+        backgroundSize: '400% 400%',
+        animation: 'rgbFlow 8s ease infinite',
+        filter: 'blur(2px)',
+      }}
+    />
+    
+    {/* Inner glow based on tier color */}
+    <div 
+      className="absolute inset-[1px] rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"
+      style={{
+        boxShadow: `inset 0 0 30px ${plan.glow}`,
+      }}
+    />
+    
+    {/* Card content */}
+    <div className="relative h-full rounded-2xl bg-[#0a0a0f]/95 backdrop-blur-sm border border-white/10 overflow-hidden">
+      {/* Gradient header */}
+      <div 
+        className={`h-2 bg-gradient-to-r ${plan.color}`}
+      />
+      
+      {/* Subtle gradient overlay */}
+      <div 
+        className="absolute inset-0 opacity-5 pointer-events-none"
+        style={{
+          background: `linear-gradient(135deg, ${plan.glow.replace('0.4', '0.3')}, transparent)`,
+        }}
+      />
+      
+      {children}
     </div>
-
-    {/* Claude tier row */}
-    <p className="text-[10px] font-bold uppercase tracking-widest text-neon-violet/70 mb-2">Claude (own key required · Creator+)</p>
-    <div className="grid grid-cols-3 gap-3 mb-4">
-      {[
-        { label: 'Haiku 4.5',  cost: '30 cr', color: 'border-neon-cyan/30 text-neon-cyan',     note: 'Creator' },
-        { label: 'Sonnet 4.6', cost: '30 cr', color: 'border-neon-violet/30 text-neon-violet', note: 'Studio' },
-        { label: 'Opus 4.6',   cost: '15 cr', color: 'border-yellow-400/30 text-yellow-400',   note: 'Catalyst (½ price)' },
-      ].map((m) => (
-        <div key={m.label} className={`rounded-xl border p-4 bg-void-light text-center ${m.color}`}>
-          <div className="text-[10px] font-bold mb-1">{m.label}</div>
-          <div className="text-lg font-black font-mono">{m.cost}</div>
-          <div className="text-[9px] text-text-muted mt-1">{m.note}</div>
-        </div>
-      ))}
-    </div>
-
-    {/* Other models */}
-    <div className="grid grid-cols-2 gap-3">
-      {[
-        { label: 'OpenAI GPT-4o', cost: '20 cr', color: 'border-emerald-400/30 text-emerald-400', note: 'Creator+ · own key' },
-        { label: 'Local AI (Ollama / LM Studio)', cost: 'FREE', color: 'border-green-400/20 text-green-400', note: 'Any tier · unlimited' },
-      ].map((m) => (
-        <div key={m.label} className={`rounded-xl border p-4 bg-void-light text-center ${m.color}`}>
-          <div className="text-[10px] font-bold mb-1">{m.label}</div>
-          <div className="text-lg font-black font-mono">{m.cost}</div>
-          <div className="text-[9px] text-text-muted mt-1">{m.note}</div>
-        </div>
-      ))}
-    </div>
-    <p className="text-center text-[10px] text-text-muted mt-4">
-      Local AI (Ollama / LM Studio) is always <span className="text-green-400 font-bold">FREE</span> — unlimited pipeline runs on your own hardware.
-    </p>
+    
+    <style>{`
+      @keyframes rgbFlow {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+      }
+    `}</style>
   </div>
 );
 
-// ── Main page ─────────────────────────────────────────────────────────────────
-const PricingPage: React.FC = () => {
-  const navigate = useNavigate();
-  const { user, isAuthenticated } = useAuthStore();
-  const currentTier = user?.membershipTier ?? 'free';
-  const [_hoveredTier, setHoveredTier] = useState<MembershipTier | null>(null);
+// ── Credit Pack Card ──────────────────────────────────────────────────────────
+const CreditPackCard: React.FC<{ pack: typeof CREDIT_PACKS[0]; onSelect: () => void }> = ({ pack, onSelect }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    className="relative group"
+  >
+    <div 
+      className="absolute -inset-[1px] rounded-xl opacity-40 group-hover:opacity-80 transition-opacity"
+      style={{
+        background: 'linear-gradient(90deg, #fbbf24, #f59e0b, #fbbf24)',
+        backgroundSize: '200% 200%',
+        animation: 'rgbFlow 4s ease infinite',
+      }}
+    />
+    <div className="relative p-4 rounded-xl bg-[#0a0a0f] border border-amber-500/20">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
+            <Coins className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <div className="text-2xl font-bold">{pack.credits}</div>
+            <div className="text-xs text-white/50">credits</div>
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-xl font-bold text-amber-400">${pack.price}</div>
+          <Button 
+            size="sm" 
+            onClick={onSelect}
+            className="bg-amber-500 hover:bg-amber-600 text-black font-bold text-xs mt-1"
+          >
+            Buy
+          </Button>
+        </div>
+      </div>
+    </div>
+  </motion.div>
+);
 
-  const handleSelect = (tier: MembershipTier) => {
-    if (!isAuthenticated) {
-      navigate('/signup');
+// ── Main Page ─────────────────────────────────────────────────────────────────
+export default function PricingPage() {
+  const navigate = useNavigate();
+  const [hoveredPlan, setHoveredPlan] = useState<string | null>(null);
+  const [user, setUser] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleSubscribe = async (planId: string, price: number) => {
+    if (planId === 'free') {
+      navigate('/signup', { state: { tier: planId } });
       return;
     }
-    if (tier === 'free') return;
-    // TODO: integrate Stripe checkout
-    alert(`Stripe checkout for ${TIER_CONFIG[tier].name} ($${TIER_CONFIG[tier].price}/mo) coming soon.`);
+
+    if (!user) {
+      // Redirect to login/signup with plan pre-selected
+      navigate('/signup', { state: { tier: planId, redirect: 'checkout' } });
+      return;
+    }
+
+    setIsLoading(planId);
+    setError(null);
+
+    try {
+      const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || '/api';
+      
+      const response = await fetch(`${API_BASE_URL}/stripe/checkout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.uid,
+          items: [{
+            asset: {
+              id: `membership-${planId}`,
+              title: `NovAura ${PLANS.find(p => p.id === planId)?.name} Membership`,
+              shortDescription: `Monthly subscription to NovAura ${PLANS.find(p => p.id === planId)?.name}`,
+              price: Math.round(price * 100), // Convert to cents
+              type: 'subscription',
+            },
+          }],
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.message || 'Failed to create checkout session');
+      }
+
+      const { url } = await response.json();
+      window.location.href = url;
+    } catch (err: any) {
+      console.error('Checkout error:', err);
+      setError(err.message || 'Failed to start checkout. Please try again.');
+      setIsLoading(null);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-void text-white">
-      {/* Hero */}
-      <div className="relative pt-24 pb-16 text-center overflow-hidden">
-        <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-neon-cyan/5 blur-3xl rounded-full" />
+    <div className="min-h-screen bg-[#0a0a0f] text-white relative overflow-hidden">
+      {/* Animated background */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div 
+          className="absolute w-[800px] h-[800px] rounded-full blur-[150px] opacity-20"
+          style={{
+            background: 'conic-gradient(from 0deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #9400d3, #ff00ff, #ff0000)',
+            top: '-20%',
+            left: '-10%',
+            animation: 'spin 30s linear infinite',
+          }}
+        />
+        <div 
+          className="absolute w-[600px] h-[600px] rounded-full blur-[120px] opacity-15"
+          style={{
+            background: 'conic-gradient(from 180deg, #00ffff, #ff00ff, #ffff00, #00ffff)',
+            bottom: '-20%',
+            right: '-5%',
+            animation: 'spin 25s linear infinite reverse',
+          }}
+        />
+      </div>
+      
+      {/* Content */}
+      <div className="relative z-10 max-w-7xl mx-auto px-6 py-12">
+        {/* Header */}
+        <div className="text-center mb-12">
+          <motion.h1 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-4xl md:text-5xl font-bold mb-4"
+            style={{
+              background: 'linear-gradient(90deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #9400d3, #ff00ff)',
+              backgroundSize: '400% 400%',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              animation: 'rgbFlow 5s ease infinite',
+            }}
+          >
+            Choose Your Path
+          </motion.h1>
+          <motion.p 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="text-lg text-white/60 max-w-2xl mx-auto"
+          >
+            1 credit = 1 API call. Local AI (Ollama/LM Studio) is always FREE.
+          </motion.p>
         </div>
-        <motion.div
+
+        {/* Error Message */}
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="max-w-2xl mx-auto mb-8 p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-3"
+          >
+            <AlertCircle className="w-5 h-5 text-red-400" />
+            <span className="text-red-400">{error}</span>
+          </motion.div>
+        )}
+
+        {/* Credit Packs Section */}
+        <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="relative z-10"
+          transition={{ delay: 0.2 }}
+          className="mb-12"
         >
-          <Badge variant="outline" className="border-neon-cyan/30 text-neon-cyan text-[10px] uppercase tracking-widest mb-4">
-            NovAura Membership
-          </Badge>
-          <h1 className="text-5xl font-heading font-black tracking-tight mb-4">
-            Build without limits.
-            <br />
-            <span className="text-neon-cyan">Pay for what you use.</span>
-          </h1>
-          <p className="text-text-muted max-w-xl mx-auto text-sm leading-relaxed">
-            Every tier includes the marketplace, asset publishing, and local AI inference.
-            Upgrade for BuilderBot power, system AI keys, and the full Web OS.
-          </p>
+          <div className="flex items-center gap-2 mb-4">
+            <Coins className="w-5 h-5 text-amber-400" />
+            <h2 className="text-xl font-bold">Need More Credits?</h2>
+            <span className="text-sm text-white/50">$5 per 10 credits</span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {CREDIT_PACKS.map((pack) => (
+              <CreditPackCard 
+                key={pack.credits} 
+                pack={pack} 
+                onSelect={() => navigate('/checkout/credits', { state: { pack } })}
+              />
+            ))}
+          </div>
         </motion.div>
-      </div>
 
-      {/* Tier Cards */}
-      <div className="max-w-6xl mx-auto px-6 pb-16">
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
-          {TIERS.map((tier, i) => {
-            const config = TIER_CONFIG[tier];
-            const isCurrent = currentTier === tier;
-            const isPopular = tier === 'studio';
-
+        {/* Pricing Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {PLANS.map((plan, i) => {
+            const Icon = plan.icon;
+            const isPopular = plan.popular;
+            const isLoadingThis = isLoading === plan.id;
+            
             return (
               <motion.div
-                key={tier}
-                initial={{ opacity: 0, y: 30 }}
+                key={plan.id}
+                initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: i * 0.08 }}
-                onHoverStart={() => setHoveredTier(tier)}
-                onHoverEnd={() => setHoveredTier(null)}
-                className={`relative rounded-2xl border bg-void-light p-6 flex flex-col transition-all duration-300 ${ACCENT[tier]} ${GLOW[tier]}`}
+                transition={{ delay: i * 0.1 }}
+                onMouseEnter={() => setHoveredPlan(plan.id)}
+                onMouseLeave={() => setHoveredPlan(null)}
+                className="h-full"
               >
-                {isPopular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                    <Badge className="bg-neon-violet text-white text-[9px] uppercase tracking-widest border-0 px-3">
-                      Most Popular
-                    </Badge>
-                  </div>
-                )}
-                {isCurrent && (
-                  <div className="absolute -top-3 right-4">
-                    <Badge className="bg-green-500/20 text-green-400 text-[9px] uppercase tracking-widest border border-green-500/30 px-2">
-                      Current
-                    </Badge>
-                  </div>
-                )}
-
-                {/* Header */}
-                <div className="mb-6">
-                  <div className={`flex items-center gap-2 mb-3 ${config.color}`}>
-                    {TIER_ICONS[tier]}
-                    <span className="font-bold text-sm uppercase tracking-widest">{config.name}</span>
-                  </div>
-                  <div className="flex items-end gap-1">
-                    <span className="text-4xl font-black">{config.price === 0 ? 'Free' : `$${config.price}`}</span>
-                    {config.price > 0 && <span className="text-text-muted text-sm mb-1">/month</span>}
-                  </div>
-                  {config.price === 0 && (
-                    <p className="text-[10px] text-text-muted mt-1">Forever free, no card needed</p>
-                  )}
-                </div>
-
-                {/* Key stats */}
-                <div className="space-y-2 mb-6 flex-1">
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-text-muted">Credits / day</span>
-                    <span className="font-bold">{config.creditsPerDay.toLocaleString()}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-text-muted">BuilderBot / month</span>
-                    <span className="font-bold">{config.builderBotPerMonth.toLocaleString()}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-text-muted">Own API keys</span>
-                    {config.canBringOwnKeys
-                      ? <Check className="w-3.5 h-3.5 text-green-400" />
-                      : <X className="w-3.5 h-3.5 text-white/20" />}
-                  </div>
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-text-muted">Web OS</span>
-                    <span className="font-bold">
-                      {config.webOS === false ? '—' : config.webOS === 'limited' ? 'Limited' : 'Full'}
-                    </span>
-                  </div>
-                  {(tier === 'studio' || tier === 'catalyst') && (
-                    <>
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-text-muted">Own key = free inference</span>
-                        <Check className="w-3.5 h-3.5 text-green-400" />
-                      </div>
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-text-muted">Free company assets</span>
-                        <span className="font-bold" style={{ color: tier === 'studio' ? '#8B5CF6' : '#FBBF24' }}>
-                          {tier === 'studio' ? '2 assets' : '3 assets'}
+                <RGBCard plan={plan} isPopular={isPopular}>
+                  <div className="p-6 h-full flex flex-col">
+                    {/* Popular Badge */}
+                    {isPopular && (
+                      <div className="absolute top-4 right-4">
+                        <span 
+                          className="px-3 py-1 rounded-full text-xs font-bold text-black"
+                          style={{
+                            background: 'linear-gradient(90deg, #ff00ff, #00ffff, #ffff00)',
+                            backgroundSize: '300% 300%',
+                            animation: 'rgbFlow 3s ease infinite',
+                          }}
+                        >
+                          BEST VALUE
                         </span>
                       </div>
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-text-muted">Template discount</span>
-                        <span className="font-bold" style={{ color: tier === 'studio' ? '#8B5CF6' : '#FBBF24' }}>
-                          {tier === 'studio' ? 'Member pricing' : '20% off'}
-                        </span>
+                    )}
+                    
+                    {/* Icon & Name */}
+                    <div className="flex items-center gap-3 mb-4">
+                      <div 
+                        className={`w-12 h-12 rounded-xl flex items-center justify-center bg-gradient-to-br ${plan.color}`}
+                        style={{
+                          boxShadow: `0 0 20px ${plan.glow}`,
+                        }}
+                      >
+                        <Icon className="w-6 h-6 text-white" />
                       </div>
-                    </>
-                  )}
-                  {tier === 'catalyst' && (
-                    <>
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-text-muted">Credit cost</span>
-                        <span className="font-bold text-yellow-400">½ price</span>
+                      <div>
+                        <h3 className="font-bold text-xl">{plan.name}</h3>
+                        <p className="text-xs text-white/50">{plan.subtitle}</p>
                       </div>
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-text-muted">Beta & early access</span>
-                        <Check className="w-3.5 h-3.5 text-green-400" />
+                    </div>
+                    
+                    {/* Price */}
+                    <div className="mb-4">
+                      <span className="text-4xl font-bold">${plan.price}</span>
+                      {plan.price > 0 && <span className="text-white/50">/month</span>}
+                    </div>
+                    
+                    <p className="text-sm text-white/60 mb-6">{plan.description}</p>
+                    
+                    {/* Credit Stats */}
+                    <div className="grid grid-cols-2 gap-4 mb-6 p-4 rounded-lg bg-white/5">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-amber-400">{plan.creditsPerDay}</div>
+                        <div className="text-xs text-white/50">per day</div>
                       </div>
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-text-muted">Live support</span>
-                        <Check className="w-3.5 h-3.5 text-green-400" />
+                      <div className="text-center">
+                        <div className="text-2xl font-bold">{plan.creditsPerMonth}</div>
+                        <div className="text-xs text-white/50">per month</div>
                       </div>
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-text-muted">Catalyst ⚔ badge</span>
-                        <CatalystBadge size={16} />
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                {/* CTA */}
-                <Button
-                  onClick={() => handleSelect(tier)}
-                  disabled={isCurrent}
-                  className={`w-full h-10 rounded-xl transition-all duration-200 ${BTN_CLASS[tier]} disabled:opacity-50 disabled:cursor-not-allowed`}
-                >
-                  {isCurrent ? 'Current Plan' : tier === 'free' ? 'Get Started' : `Upgrade to ${config.name}`}
-                </Button>
+                    </div>
+                    
+                    {/* CTA */}
+                    <Button
+                      onClick={() => handleSubscribe(plan.id, plan.price)}
+                      disabled={isLoadingThis}
+                      className={`w-full mb-6 bg-gradient-to-r ${plan.color} text-white font-bold border-0`}
+                      style={{
+                        boxShadow: hoveredPlan === plan.id ? `0 0 25px ${plan.glow}` : 'none',
+                        transition: 'box-shadow 0.3s ease',
+                      }}
+                    >
+                      {isLoadingThis ? (
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      ) : plan.price === 0 ? (
+                        'Start Free'
+                      ) : (
+                        'Subscribe'
+                      )}
+                    </Button>
+                    
+                    {/* Features */}
+                    <div className="space-y-3 flex-1">
+                      {plan.features.map((feature, fi) => (
+                        <div key={fi} className="flex items-start gap-3">
+                          <Check className="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0" />
+                          <span className="text-sm text-white/70">{feature}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </RGBCard>
               </motion.div>
             );
           })}
         </div>
 
-        {/* Full comparison table */}
-        <motion.div
+
+
+        {/* Footer */}
+        <motion.div 
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.5 }}
-          className="mt-20"
+          className="mt-16 text-center"
         >
-          <h2 className="text-center text-sm font-bold uppercase tracking-widest text-text-muted mb-8">
-            Full Feature Comparison
-          </h2>
-          <div className="rounded-2xl border border-white/5 overflow-hidden">
-            {/* Table header */}
-            <div className="grid grid-cols-5 bg-void-lighter border-b border-white/5">
-              <div className="p-4 text-[10px] text-text-muted uppercase tracking-widest">Feature</div>
-              {TIERS.map((tier) => (
-                <div key={tier} className={`p-4 text-center text-[10px] font-bold uppercase tracking-widest ${TIER_CONFIG[tier].color}`}>
-                  {TIER_CONFIG[tier].name}
-                </div>
-              ))}
-            </div>
-
-            {FEATURES.map((row, i) => (
-              <div
-                key={row.label}
-                className={`grid grid-cols-5 border-b border-white/5 ${i % 2 === 0 ? 'bg-void' : 'bg-void-light'} hover:bg-void-lighter transition-colors`}
-              >
-                <div className="p-3 flex items-center gap-2 text-[11px] text-text-muted">
-                  {row.icon && <span className="opacity-50">{row.icon}</span>}
-                  {row.label}
-                </div>
-                {TIERS.map((tier) => (
-                  <div key={tier} className="p-3 flex items-center justify-center">
-                    {renderValue(row.values[tier])}
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-        </motion.div>
-
-        {/* Model cost callout */}
-        <ModelCostCallout />
-
-        {/* Credit Top-Up Packs */}
-        <motion.div
-          className="mt-16 max-w-2xl mx-auto"
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
-        >
-          <h3 className="text-center text-sm font-bold uppercase tracking-widest text-text-muted mb-2">
-            Need more credits?
-          </h3>
-          <p className="text-center text-[11px] text-text-muted mb-6">
-            One-time top-ups. Credits never expire. Stack on any tier.
+          <p className="text-white/40 text-sm mb-2">
+            <strong>Simple pricing:</strong> 1 credit = 1 API call
           </p>
-          <div className="grid grid-cols-3 gap-4">
-            {[
-              { credits: 200,  price: 5,  label: 'Starter',  bonus: null,    color: 'border-white/10 hover:border-white/20' },
-              { credits: 450,  price: 10, label: 'Builder',  bonus: '+50',   color: 'border-neon-cyan/30 hover:border-neon-cyan/50' },
-              { credits: 1000, price: 20, label: 'Genesis',  bonus: '+200',  color: 'border-neon-violet/30 hover:border-neon-violet/50' },
-            ].map((pack) => (
-              <div
-                key={pack.price}
-                className={`relative rounded-xl border bg-void-light p-5 text-center transition-all group cursor-pointer hover:bg-void-lighter ${pack.color}`}
-                onClick={() => alert(`Stripe credit pack checkout coming soon.`)}
-              >
-                {pack.bonus && (
-                  <div className="absolute -top-2.5 left-1/2 -translate-x-1/2">
-                    <Badge className="bg-neon-cyan text-void text-[8px] font-black border-0 px-2 py-0">
-                      {pack.bonus} BONUS
-                    </Badge>
-                  </div>
-                )}
-                <div className="text-[10px] font-bold uppercase tracking-widest text-text-muted mb-2">{pack.label}</div>
-                <div className="text-3xl font-black text-white mb-1">
-                  {pack.credits.toLocaleString()}
-                  <span className="text-sm text-text-muted font-normal ml-1">cr</span>
-                </div>
-                <div className="text-[10px] text-text-muted mb-3">
-                  ${(pack.price / pack.credits * 10).toFixed(1)}¢ per credit
-                </div>
-                <div className="text-xl font-black text-neon-cyan">${pack.price}</div>
-                <div className="text-[9px] text-text-muted mt-1">one-time</div>
-              </div>
-            ))}
-          </div>
-          <p className="text-center text-[9px] text-text-muted/50 mt-4 font-mono">
-            Catalyst members pay half credits on all actions — your packs go twice as far.
+          <p className="text-white/40 text-sm">
+            Local AI (Ollama/LM Studio) = FREE. Bring your own API keys = FREE. Buy credits anytime: $5 per 10 credits.
           </p>
         </motion.div>
-
-        {/* FAQ / note */}
-        <motion.p
-          className="text-center text-[11px] text-text-muted mt-16"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.8 }}
-        >
-          All plans include transparent royalties, ethical licensing, and the full NovAura creator ecosystem.
-          <br />
-          Cancel anytime. No hidden fees.{' '}
-          <button
-            onClick={() => navigate('/api-keys')}
-            className="underline underline-offset-2 hover:text-white/70 transition-colors"
-          >
-            Learn how to use your own API key for free inference →
-          </button>
-        </motion.p>
       </div>
+      
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
-};
-
-export default PricingPage;
+}

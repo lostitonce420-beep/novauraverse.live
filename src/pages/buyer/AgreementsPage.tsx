@@ -288,7 +288,7 @@ export default function AgreementsPage() {
                   These agreements are legally binding contracts. You are obligated to comply with 
                   all terms including royalty payments and audit provisions. NovAura Market maintains 
                   these records as a neutral ledger provider only. 
-                  <a href="/legal/faq" className="text-neon-cyan hover:underline ml-1">
+                  <a href="/help" className="text-neon-cyan hover:underline ml-1">
                     Learn more about your obligations.
                   </a>
                 </p>

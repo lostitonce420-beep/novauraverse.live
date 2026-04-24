@@ -1,190 +1,214 @@
 import type { ForumThread, ForumReply, JobPost, JobApplication, JobType } from '@/types';
-import { getUserById } from './userStorage';
+import { db } from '../config/firebase';
+import { 
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  orderBy,
+  serverTimestamp,
+  increment
+} from 'firebase/firestore';
 
-const STORAGE_KEYS = {
-  threads: 'novaura_forum_threads',
-  replies: 'novaura_forum_replies',
-  jobs: 'novaura_jobs',
-  applications: 'novaura_job_applications',
-};
-
-// Initialize storage
-export const initializeCommunityStorage = () => {
-  const keys = Object.values(STORAGE_KEYS);
-  keys.forEach(key => {
-    if (!localStorage.getItem(key)) {
-      localStorage.setItem(key, JSON.stringify([]));
-    }
-  });
-};
+const THREADS_COLLECTION = 'forumThreads';
+const REPLIES_COLLECTION = 'forumReplies';
+const JOBS_COLLECTION = 'jobs';
+const APPLICATIONS_COLLECTION = 'jobApplications';
 
 // --- FORUM LOGIC ---
 
-export const getThreads = (category?: ForumThread['category']): ForumThread[] => {
-  const data = localStorage.getItem(STORAGE_KEYS.threads);
-  let threads: ForumThread[] = data ? JSON.parse(data) : [];
+export const getThreads = async (category?: ForumThread['category']): Promise<ForumThread[]> => {
+  if (!db) return [];
   
-  if (category) {
-    threads = threads.filter(t => t.category === category);
+  try {
+    let q = query(
+      collection(db, THREADS_COLLECTION),
+      orderBy('createdAt', 'desc')
+    );
+    
+    if (category) {
+      q = query(q, where('category', '==', category));
+    }
+    
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })) as ForumThread[];
+  } catch (error) {
+    console.error('Error fetching threads:', error);
+    return [];
   }
+};
+
+export const getThread = async (threadId: string): Promise<ForumThread | null> => {
+  if (!db) return null;
   
-  return threads.map(t => ({
-    ...t,
-    author: getUserById(t.authorId)
-  })).sort((a, b) => {
-    if (a.isPinned && !b.isPinned) return -1;
-    if (!a.isPinned && b.isPinned) return 1;
-    return new Date(b.lastReplyAt || b.createdAt).getTime() - new Date(a.lastReplyAt || a.createdAt).getTime();
-  });
+  try {
+    const docRef = doc(db, THREADS_COLLECTION, threadId);
+    const docSnap = await getDoc(docRef);
+    
+    if (docSnap.exists()) {
+      return { id: docSnap.id, ...docSnap.data() } as ForumThread;
+    }
+    return null;
+  } catch (error) {
+    console.error('Error fetching thread:', error);
+    return null;
+  }
 };
 
-export const getThreadById = (id: string): ForumThread | undefined => {
-  const threads = getThreads();
-  return threads.find(t => t.id === id);
-};
-
-export const createThread = (
-  authorId: string,
+export const createThread = async (
+  userId: string,
   title: string,
   content: string,
-  category: ForumThread['category'],
-  tags: string[] = []
-): ForumThread => {
-  const threads = JSON.parse(localStorage.getItem(STORAGE_KEYS.threads) || '[]');
+  category: ForumThread['category']
+): Promise<ForumThread | null> => {
+  if (!db) return null;
   
-  const newThread: ForumThread = {
-    id: `thread_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    authorId,
-    title,
-    content,
-    category,
-    tags,
-    views: 0,
-    replyCount: 0,
-    lastReplyAt: new Date().toISOString(),
-    isPinned: false,
-    isLocked: false,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-  
-  threads.push(newThread);
-  localStorage.setItem(STORAGE_KEYS.threads, JSON.stringify(threads));
-  
-  return { ...newThread, author: getUserById(authorId) };
+  try {
+    const newThread = {
+      creatorId: userId,
+      title,
+      content,
+      category,
+      replies: 0,
+      views: 0,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+    
+    const docRef = await addDoc(collection(db, THREADS_COLLECTION), newThread);
+    
+    return {
+      id: docRef.id,
+      ...newThread,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    } as ForumThread;
+  } catch (error) {
+    console.error('Error creating thread:', error);
+    return null;
+  }
 };
 
-export const getReplies = (threadId: string): ForumReply[] => {
-  const data = localStorage.getItem(STORAGE_KEYS.replies);
-  const replies: ForumReply[] = data ? JSON.parse(data) : [];
+export const getReplies = async (threadId: string): Promise<ForumReply[]> => {
+  if (!db) return [];
   
-  return replies
-    .filter(r => r.threadId === threadId)
-    .map(r => ({
-      ...r,
-      author: getUserById(r.authorId)
-    }))
-    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  try {
+    const q = query(
+      collection(db, REPLIES_COLLECTION),
+      where('threadId', '==', threadId),
+      orderBy('createdAt', 'asc')
+    );
+    
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })) as ForumReply[];
+  } catch (error) {
+    console.error('Error fetching replies:', error);
+    return [];
+  }
 };
 
-export const addReply = (
+export const addReply = async (
   threadId: string,
-  authorId: string,
+  userId: string,
   content: string
-): ForumReply => {
-  const replies = JSON.parse(localStorage.getItem(STORAGE_KEYS.replies) || '[]');
+): Promise<ForumReply | null> => {
+  if (!db) return null;
   
-  const newReply: ForumReply = {
-    id: `reply_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    threadId,
-    authorId,
-    content,
-    likes: 0,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-  
-  replies.push(newReply);
-  localStorage.setItem(STORAGE_KEYS.replies, JSON.stringify(replies));
-  
-  // Update thread stats
-  const threads = JSON.parse(localStorage.getItem(STORAGE_KEYS.threads) || '[]');
-  const threadIndex = threads.findIndex((t: ForumThread) => t.id === threadId);
-  if (threadIndex !== -1) {
-    threads[threadIndex].replyCount++;
-    threads[threadIndex].lastReplyAt = newReply.createdAt;
-    localStorage.setItem(STORAGE_KEYS.threads, JSON.stringify(threads));
+  try {
+    const newReply = {
+      threadId,
+      creatorId: userId,
+      content,
+      createdAt: serverTimestamp(),
+    };
+    
+    const docRef = await addDoc(collection(db, REPLIES_COLLECTION), newReply);
+    
+    // Update thread reply count
+    const threadRef = doc(db, THREADS_COLLECTION, threadId);
+    await updateDoc(threadRef, {
+      replies: increment(1),
+      updatedAt: serverTimestamp()
+    });
+    
+    return {
+      id: docRef.id,
+      ...newReply,
+      createdAt: new Date().toISOString()
+    } as ForumReply;
+  } catch (error) {
+    console.error('Error adding reply:', error);
+    return null;
   }
-  
-  return { ...newReply, author: getUserById(authorId) };
 };
 
-// --- JOB BOARD LOGIC ---
+// --- JOBS LOGIC ---
 
-export const getJobs = (filters?: { category?: JobPost['category']; type?: JobType }): JobPost[] => {
-  const data = localStorage.getItem(STORAGE_KEYS.jobs);
-  let jobs: JobPost[] = data ? JSON.parse(data) : [];
+export const getJobs = async (type?: JobType): Promise<JobPost[]> => {
+  if (!db) return [];
   
-  if (filters?.category) {
-    jobs = jobs.filter(j => j.category === filters.category);
+  try {
+    let q = query(
+      collection(db, JOBS_COLLECTION),
+      where('status', '==', 'open'),
+      orderBy('createdAt', 'desc')
+    );
+    
+    if (type) {
+      q = query(q, where('type', '==', type));
+    }
+    
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })) as JobPost[];
+  } catch (error) {
+    console.error('Error fetching jobs:', error);
+    return [];
   }
-  if (filters?.type) {
-    jobs = jobs.filter(j => j.jobType === filters.type);
-  }
-  
-  return jobs.map(j => ({
-    ...j,
-    recruiter: getUserById(j.recruiterId)
-  })).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 };
 
-export const createJob = (
-  recruiterId: string,
-  data: Omit<JobPost, 'id' | 'recruiterId' | 'status' | 'applications' | 'createdAt'>
-): JobPost => {
-  const jobs = JSON.parse(localStorage.getItem(STORAGE_KEYS.jobs) || '[]');
+export const createJob = async (
+  userId: string,
+  jobData: Omit<JobPost, 'id' | 'creatorId' | 'createdAt' | 'status'>
+): Promise<JobPost | null> => {
+  if (!db) return null;
   
-  const newJob: JobPost = {
-    ...data,
-    id: `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    recruiterId,
-    status: 'open',
-    applications: 0,
-    createdAt: new Date().toISOString(),
-  };
-  
-  jobs.push(newJob);
-  localStorage.setItem(STORAGE_KEYS.jobs, JSON.stringify(jobs));
-  
-  return { ...newJob, recruiter: getUserById(recruiterId) };
+  try {
+    const newJob = {
+      creatorId: userId,
+      ...jobData,
+      status: 'open',
+      applications: 0,
+      createdAt: serverTimestamp(),
+    };
+    
+    const docRef = await addDoc(collection(db, JOBS_COLLECTION), newJob);
+    
+    return {
+      id: docRef.id,
+      ...newJob,
+      createdAt: new Date().toISOString()
+    } as JobPost;
+  } catch (error) {
+    console.error('Error creating job:', error);
+    return null;
+  }
 };
 
-export const applyForJob = (
-  jobId: string,
-  applicantId: string,
-  data: Omit<JobApplication, 'id' | 'jobId' | 'applicantId' | 'status' | 'createdAt'>
-): JobApplication => {
-  const applications = JSON.parse(localStorage.getItem(STORAGE_KEYS.applications) || '[]');
-  
-  const newApplication: JobApplication = {
-    ...data,
-    id: `app_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    jobId,
-    applicantId,
-    status: 'pending',
-    createdAt: new Date().toISOString(),
-  };
-  
-  applications.push(newApplication);
-  localStorage.setItem(STORAGE_KEYS.applications, JSON.stringify(applications));
-  
-  // Update job application count
-  const jobs = JSON.parse(localStorage.getItem(STORAGE_KEYS.jobs) || '[]');
-  const jobIndex = jobs.findIndex((j: JobPost) => j.id === jobId);
-  if (jobIndex !== -1) {
-    jobs[jobIndex].applications++;
-    localStorage.setItem(STORAGE_KEYS.jobs, JSON.stringify(jobs));
-  }
-  
-  return { ...newApplication, applicant: getUserById(applicantId) };
+// Legacy initialization (no-op now)
+export const initializeCommunityStorage = () => {
+  // Firestore is ready immediately
 };

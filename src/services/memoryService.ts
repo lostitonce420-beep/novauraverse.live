@@ -1,4 +1,5 @@
 import type { ChatMessage } from '@/stores/aiStore';
+import { kernelStorage } from '@/kernel/kernelStorage.js';
 
 interface UserFact {
   id: string;
@@ -15,15 +16,15 @@ export const memoryService = {
   // Save a conversation chunk to long-term memory
   saveToMemory(userId: string, messages: ChatMessage[]): void {
     const memoryKey = `aura_memory_${userId}`;
-    const existing = JSON.parse(localStorage.getItem(memoryKey) || '[]');
+    const existing = JSON.parse(kernelStorage.getItem(memoryKey) || '[]');
     const updated = [...existing, ...messages].slice(-500); // Keep last 500 messages
-    localStorage.setItem(memoryKey, JSON.stringify(updated));
+    kernelStorage.setItem(memoryKey, JSON.stringify(updated));
   },
 
   // Retrieve relevant memories based on search query/context
   getRelevantMemories(userId: string, query: string, limit: number = 5): string {
     const memoryKey = `aura_memory_${userId}`;
-    const allMessages: ChatMessage[] = JSON.parse(localStorage.getItem(memoryKey) || '[]');
+    const allMessages: ChatMessage[] = JSON.parse(kernelStorage.getItem(memoryKey) || '[]');
     
     // Simple Keyword matching for "RAG"
     const words = query.toLowerCase().split(' ').filter(w => w.length > 3);
@@ -41,7 +42,7 @@ export const memoryService = {
   // Fact Extraction logic (Simulated - could be enhanced with LLM analysis)
   extractFact(userId: string, content: string): void {
     const factKey = `aura_facts_${userId}`;
-    const facts: UserFact[] = JSON.parse(localStorage.getItem(factKey) || '[]');
+    const facts: UserFact[] = JSON.parse(kernelStorage.getItem(factKey) || '[]');
     
     // Simple heuristic: "My name is...", "I like...", "I want to build..."
     const patterns = [
@@ -63,12 +64,12 @@ export const memoryService = {
       }
     });
 
-    localStorage.setItem(factKey, JSON.stringify(facts.slice(-20))); // Keep top 20 facts
+    kernelStorage.setItem(factKey, JSON.stringify(facts.slice(-20))); // Keep top 20 facts
   },
 
   getUserPersona(userId: string): string {
     const factKey = `aura_facts_${userId}`;
-    const facts: UserFact[] = JSON.parse(localStorage.getItem(factKey) || '[]');
+    const facts: UserFact[] = JSON.parse(kernelStorage.getItem(factKey) || '[]');
     if (facts.length === 0) return "No known user persona data.";
     
     return facts.map(f => f.content).join('. ');

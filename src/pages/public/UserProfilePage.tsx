@@ -13,7 +13,7 @@ import {
   Edit3,
   Globe,
   Cpu,
-  Gpu,
+  Microchip,
   Laptop,
   Monitor,
   MonitorSmartphone,
@@ -22,12 +22,18 @@ import {
   Layers,
   UserPlus,
   UserMinus,
-  Users
+  Users,
+  Flame,
+  Crown,
+  ShieldCheck,
+  TrendingUp,
+  Award
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/authStore';
 import { useSocialStore } from '@/stores/socialStore';
-import { getUserByUsername } from '@/services/userStorage';
+import { db } from '@/config/firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { getAssetsByCreator } from '@/services/marketService';
 import { getApprovedSubmissions } from '@/services/galleryService';
 import { formatPrice } from '@/utils/format';
@@ -48,15 +54,30 @@ export default function UserProfilePage() {
   const isOwnProfile = currentUser?.username === username;
 
   useEffect(() => {
-    if (username) {
-      const user = getUserByUsername(username);
-      if (user) {
-        setProfileUser(user);
-        setAssets(getAssetsByCreator(user.id).filter(a => a.status === 'approved'));
-        setGallerySubmissions(getApprovedSubmissions({ creatorId: user.id }));
+    const loadProfileData = async () => {
+      if (!username) return;
+      
+      setIsLoading(true);
+      try {
+        // Query Firestore for user by username
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('username', '==', username));
+        const querySnapshot = await getDocs(q);
+        const user = querySnapshot.empty ? null : { id: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() } as UserType;
+        if (user) {
+          setProfileUser(user);
+          const creatorAssets = await getAssetsByCreator(user.id);
+          setAssets(creatorAssets.filter(a => a.status === 'approved'));
+          setGallerySubmissions(getApprovedSubmissions({ creatorId: user.id }));
+        }
+      } catch (error) {
+        console.error('Failed to load profile data:', error);
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
-    }
+    };
+    
+    loadProfileData();
   }, [username]);
 
   if (isLoading) {
@@ -130,6 +151,23 @@ export default function UserProfilePage() {
                       {profileUser.role === 'creator' && (
                         <span className="px-2 py-1 bg-neon-cyan/20 text-neon-cyan rounded text-xs font-medium">
                           Creator
+                        </span>
+                      )}
+                      
+                      {/* Membership Tier Badges */}
+                      {profileUser.membershipTier === 'catalyst' && (
+                        <span className="px-2 py-1 bg-amber-400/20 text-amber-400 border border-amber-400/30 rounded text-xs font-bold flex items-center gap-1">
+                          <Flame className="w-3 h-3" /> Catalyst
+                        </span>
+                      )}
+                      {profileUser.membershipTier === 'nova' && (
+                        <span className="px-2 py-1 bg-rose-400/20 text-rose-400 border border-rose-400/30 rounded text-xs font-bold flex items-center gap-1">
+                          <Crown className="w-3 h-3" /> Nova
+                        </span>
+                      )}
+                      {(profileUser.membershipTier === 'investor' || profileUser.membershipTier === 'founding' || profileUser.equityTier) && (
+                        <span className="px-2 py-1 bg-neon-lime/20 text-neon-lime border border-neon-lime/30 rounded text-xs font-bold flex items-center gap-1">
+                          <TrendingUp className="w-3 h-3" /> Investor
                         </span>
                       )}
                     </div>
@@ -433,7 +471,7 @@ export default function UserProfilePage() {
                   <>
                     <div className="bg-void-light border border-white/5 rounded-xl p-5 flex items-center gap-4">
                       <div className="w-12 h-12 rounded-xl bg-neon-cyan/10 flex items-center justify-center text-neon-cyan">
-                        <Gpu className="w-6 h-6" />
+                        <Microchip className="w-6 h-6" />
                       </div>
                       <div>
                         <p className="text-xs text-text-muted uppercase tracking-wider">GPU / Graphics</p>
@@ -510,6 +548,25 @@ export default function UserProfilePage() {
                     <p className="text-text-muted italic">No bio provided</p>
                   )}
                   
+                  {/* Equity & Governance Section */}
+                  {(profileUser.shares || profileUser.equityTier) && (
+                    <div className="border-t border-white/10 pt-4 mt-4">
+                      <h4 className="font-medium text-text-primary mb-3 flex items-center gap-2">
+                        <TrendingUp className="w-4 h-4 text-neon-lime" /> Equity & Governance
+                      </h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="p-3 bg-white/5 rounded-lg border border-white/10">
+                          <span className="text-text-muted text-[10px] uppercase tracking-wider block mb-1">Ownership</span>
+                          <p className="text-neon-lime font-bold text-lg">{profileUser.shares?.toLocaleString() || 0} Shares</p>
+                        </div>
+                        <div className="p-3 bg-white/5 rounded-lg border border-white/10">
+                          <span className="text-text-muted text-[10px] uppercase tracking-wider block mb-1">Investment Tier</span>
+                          <p className="text-text-primary font-bold text-lg">{profileUser.equityTier || 'Early Participant'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="border-t border-white/10 pt-4 mt-4">
                     <h4 className="font-medium text-text-primary mb-2">Details</h4>
                     <div className="grid grid-cols-2 gap-4">

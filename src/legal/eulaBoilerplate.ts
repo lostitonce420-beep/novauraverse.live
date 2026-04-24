@@ -1,4 +1,5 @@
 import type { LicenseTier } from '@/types';
+import { kernelStorage } from '@/kernel/kernelStorage.js';
 
 export interface LicenseTerms {
   name: string;
@@ -498,12 +499,12 @@ export const saveUserAgreement = (
     version: '2.0.0',
   };
 
-  const existing = JSON.parse(localStorage.getItem('novaura_agreements') || '[]');
+  const existing = JSON.parse(kernelStorage.getItem('novaura_agreements') || '[]');
   existing.push(agreement);
-  localStorage.setItem('novaura_agreements', JSON.stringify(existing));
+  kernelStorage.setItem('novaura_agreements', JSON.stringify(existing));
   
   // Also save to a separate indexed list for easy lookup
-  const agreementIndex = JSON.parse(localStorage.getItem('novaura_agreement_index') || '[]');
+  const agreementIndex = JSON.parse(kernelStorage.getItem('novaura_agreement_index') || '[]');
   agreementIndex.push({
     id: agreement.id,
     userId,
@@ -512,18 +513,18 @@ export const saveUserAgreement = (
     signedAt: agreement.signedAt,
     royaltyPercentage: agreement.royaltyPercentage,
   });
-  localStorage.setItem('novaura_agreement_index', JSON.stringify(agreementIndex));
+  kernelStorage.setItem('novaura_agreement_index', JSON.stringify(agreementIndex));
 };
 
 // Get all agreements for a user
 export const getUserAgreements = (userId: string) => {
-  const all = JSON.parse(localStorage.getItem('novaura_agreements') || '[]');
+  const all = JSON.parse(kernelStorage.getItem('novaura_agreements') || '[]');
   return all.filter((a: any) => a.userId === userId);
 };
 
 // Get agreement for specific asset
 export const getAssetAgreement = (userId: string, assetId: string) => {
-  const all = JSON.parse(localStorage.getItem('novaura_agreements') || '[]');
+  const all = JSON.parse(kernelStorage.getItem('novaura_agreements') || '[]');
   return all.find((a: any) => a.userId === userId && a.assetId === assetId);
 };
 

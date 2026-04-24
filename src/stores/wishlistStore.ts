@@ -19,7 +19,7 @@ import {
   moveToCart,
   syncToServer,
   syncFromServer,
-  getWishlistAssets,
+  getWishlistAssetsSync,
 } from '@/services/wishlistService';
 import type { WishlistServiceItem } from '@/services/wishlistService';
 import { useCartStore } from './cartStore';
@@ -74,7 +74,7 @@ export const useWishlistStore = create<WishlistState>()(
       // Load items from localStorage and resolve asset data
       loadFromStorage: () => {
         const serviceItems = getWishlist();
-        const assets = getWishlistAssets();
+        const assets = getWishlistAssetsSync();
         
         const items = serviceItems.map(item => ({
           ...item,
@@ -87,7 +87,7 @@ export const useWishlistStore = create<WishlistState>()(
       // Add an item to wishlist
       addItem: (assetId: string, note?: string) => {
         const updatedServiceItems = addToWishlist(assetId, note);
-        const assets = getWishlistAssets();
+        const assets = getWishlistAssetsSync();
         
         const items = updatedServiceItems.map(item => ({
           ...item,
@@ -109,7 +109,7 @@ export const useWishlistStore = create<WishlistState>()(
       // Remove an item from wishlist
       removeItem: (assetId: string) => {
         const updatedServiceItems = removeFromWishlist(assetId);
-        const assets = getWishlistAssets();
+        const assets = getWishlistAssetsSync();
         
         const items = updatedServiceItems.map(item => ({
           ...item,
@@ -130,7 +130,7 @@ export const useWishlistStore = create<WishlistState>()(
       // Toggle an item in wishlist
       toggleItem: (assetId: string, note?: string) => {
         const result = toggleWishlist(assetId, note);
-        const assets = getWishlistAssets();
+        const assets = getWishlistAssetsSync();
         
         const items = result.items.map(item => ({
           ...item,
@@ -204,12 +204,18 @@ export const useWishlistStore = create<WishlistState>()(
 
       // Move an item to cart
       moveItemToCart: (assetId: string) => {
-        const asset = moveToCart(assetId);
+        const movedId = moveToCart(assetId);
         
-        if (asset) {
-          // Add to cart
-          const { addItem } = useCartStore.getState();
-          addItem(asset);
+        if (movedId) {
+          // Get asset from current items
+          const { items } = get();
+          const asset = items.find(i => i.assetId === movedId)?.asset;
+          
+          if (asset) {
+            // Add to cart
+            const { addItem } = useCartStore.getState();
+            addItem(asset);
+          }
           
           // Update wishlist state
           get().loadFromStorage();
@@ -219,7 +225,7 @@ export const useWishlistStore = create<WishlistState>()(
           addToast({
             type: 'success',
             title: 'Moved to cart',
-            message: `"${asset.title}" has been moved to your cart.`,
+            message: asset ? `"${asset.title}" has been moved to your cart.` : 'Item moved to cart.',
           });
           
           return true;
@@ -265,7 +271,7 @@ export const useWishlistStore = create<WishlistState>()(
         );
         saveWishlist(updatedServiceItems);
         
-        const assets = getWishlistAssets();
+        const assets = getWishlistAssetsSync();
         const items = updatedServiceItems.map(item => ({
           ...item,
           asset: assets.find(a => a.item.assetId === item.assetId)?.asset || undefined,
@@ -277,7 +283,7 @@ export const useWishlistStore = create<WishlistState>()(
       // Refresh asset data for all items
       refreshAssets: () => {
         const serviceItems = getWishlist();
-        const assets = getWishlistAssets();
+        const assets = getWishlistAssetsSync();
         
         const items = serviceItems.map(item => ({
           ...item,

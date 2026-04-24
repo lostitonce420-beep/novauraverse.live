@@ -239,9 +239,9 @@ export default function SignupPage() {
               />
               <span className="text-sm text-text-secondary">
                 I agree to the{' '}
-                <Link to="#" className="text-neon-cyan hover:text-neon-cyan/80">Terms of Service</Link>
+                <Link to="/legal/terms" className="text-neon-cyan hover:text-neon-cyan/80">Terms of Service</Link>
                 {' '}and{' '}
-                <Link to="#" className="text-neon-cyan hover:text-neon-cyan/80">Privacy Policy</Link>
+                <Link to="/legal/privacy" className="text-neon-cyan hover:text-neon-cyan/80">Privacy Policy</Link>
               </span>
             </label>
 

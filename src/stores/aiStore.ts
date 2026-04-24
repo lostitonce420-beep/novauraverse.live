@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
+import { kernelStorage } from '@/kernel/kernelStorage.js';
 
-export type AIProvider = 'gemini' | 'claude' | 'openai' | 'kimi' | 'vertex' | 'ollama' | 'lmstudio';
+export type AIProvider = 'gemini' | 'claude' | 'openai' | 'kimi' | 'vertex' | 'ollama' | 'lmstudio' | 'huggingface' | 'alibaba';
 
 export interface ChatMessage {
   id: string;
@@ -9,6 +10,31 @@ export interface ChatMessage {
   content: string;
   timestamp: string;
 }
+
+const OLLAMA_DEFAULT_ENDPOINT = 'http://localhost:11434';
+const LMSTUDIO_DEFAULT_ENDPOINT = 'http://localhost:1234';
+
+const normalizeLocalEndpointForProvider = (endpoint: string, provider: AIProvider): string => {
+  const value = endpoint.trim();
+
+  if (provider === 'ollama') {
+    if (!value) return OLLAMA_DEFAULT_ENDPOINT;
+    if (/:1234(?:\/|$)/i.test(value) || /\/v1(?:\/|$)/i.test(value)) {
+      return OLLAMA_DEFAULT_ENDPOINT;
+    }
+    return value;
+  }
+
+  if (provider === 'lmstudio') {
+    if (!value) return LMSTUDIO_DEFAULT_ENDPOINT;
+    if (/:11434(?:\/|$)/i.test(value) || /\/api(?:\/|$)/i.test(value)) {
+      return LMSTUDIO_DEFAULT_ENDPOINT;
+    }
+    return value;
+  }
+
+  return value;
+};
 
 interface AIState {
   provider: AIProvider;
@@ -18,6 +44,8 @@ interface AIState {
   kimiKey: string;
   vertexKey: string;
   vertexProjectId: string;
+  huggingfaceKey: string;
+  alibabaKey: string;
   localEndpoint: string;
   messages: ChatMessage[];
   isThinking: boolean;
@@ -34,6 +62,8 @@ interface AIState {
   setKimiKey: (key: string) => void;
   setVertexKey: (key: string) => void;
   setVertexProjectId: (id: string) => void;
+  setHuggingfaceKey: (key: string) => void;
+  setAlibabaKey: (key: string) => void;
   setLocalEndpoint: (endpoint: string) => void;
   addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => void;
   clearHistory: () => void;
@@ -54,7 +84,9 @@ export const useAIStore = create<AIState>()(
       kimiKey: '',
       vertexKey: '',
       vertexProjectId: '',
-      localEndpoint: 'http://localhost:11434/api/generate', // Default Ollama
+      huggingfaceKey: '',
+      alibabaKey: '',
+      localEndpoint: OLLAMA_DEFAULT_ENDPOINT,
       messages: [],
       isThinking: false,
       isPersistentPersona: true,
@@ -62,13 +94,24 @@ export const useAIStore = create<AIState>()(
       ideMainLayout: null,
       ideCenterLayout: null,
 
-      setProvider: (provider) => set({ provider }),
+      setProvider: (provider) => set((state) => {
+        if (provider === 'ollama' || provider === 'lmstudio') {
+          return {
+            provider,
+            localEndpoint: normalizeLocalEndpointForProvider(state.localEndpoint, provider),
+          };
+        }
+
+        return { provider };
+      }),
       setGeminiKey: (geminiKey) => set({ geminiKey }),
       setClaudeKey: (claudeKey) => set({ claudeKey }),
       setOpenaiKey: (openaiKey) => set({ openaiKey }),
       setKimiKey: (kimiKey) => set({ kimiKey }),
       setVertexKey: (vertexKey) => set({ vertexKey }),
       setVertexProjectId: (vertexProjectId) => set({ vertexProjectId }),
+      setHuggingfaceKey: (huggingfaceKey) => set({ huggingfaceKey }),
+      setAlibabaKey: (alibabaKey) => set({ alibabaKey }),
       setLocalEndpoint: (localEndpoint) => set({ localEndpoint }),
       
       addMessage: (msg) => set((state) => ({
@@ -93,19 +136,19 @@ export const useAIStore = create<AIState>()(
       name: 'novaura-ai-settings',
       storage: createJSONStorage(() => ({
         getItem: (name) => {
-          const userJson = localStorage.getItem('novaura_current_user');
+          const userJson = kernelStorage.getItem('novaura_current_user');
           const userId = userJson ? JSON.parse(userJson).id : 'guest';
-          return localStorage.getItem(`${name}_${userId}`);
+          return kernelStorage.getItem(`${name}_${userId}`);
         },
         setItem: (name, value) => {
-          const userJson = localStorage.getItem('novaura_current_user');
+          const userJson = kernelStorage.getItem('novaura_current_user');
           const userId = userJson ? JSON.parse(userJson).id : 'guest';
-          localStorage.setItem(`${name}_${userId}`, value);
+          kernelStorage.setItem(`${name}_${userId}`, value);
         },
         removeItem: (name) => {
-          const userJson = localStorage.getItem('novaura_current_user');
+          const userJson = kernelStorage.getItem('novaura_current_user');
           const userId = userJson ? JSON.parse(userJson).id : 'guest';
-          localStorage.removeItem(`${name}_${userId}`);
+          kernelStorage.removeItem(`${name}_${userId}`);
         },
       })),
     }

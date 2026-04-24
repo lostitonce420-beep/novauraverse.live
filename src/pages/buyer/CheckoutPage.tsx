@@ -17,14 +17,14 @@ import { useUIStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
 import { formatPrice, getLicenseDisplayName } from '@/utils/format';
 import { calculateRevenueSplits } from '@/services/royaltyService';
-import { apiClient } from '@/services/apiClient';
+import { createCheckoutSession } from '@/services/marketService';
 import type { RoyaltyLedger } from '@/types';
 
 export default function CheckoutPage() {
   const navigate = useNavigate();
-  const { items, total, clearCart } = useCartStore();
+  const { items, total } = useCartStore();
   const { addToast } = useUIStore();
-  const { user, updateProfile } = useAuthStore();
+  const { user } = useAuthStore();
   
   const [step, setStep] = useState(1);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
@@ -69,37 +69,26 @@ export default function CheckoutPage() {
     setIsProcessing(true);
 
     try {
-      for (const item of items) {
-        await apiClient.post('/orders', {
-          assetId: item.assetId,
-          eulaVersion: '1.0',
+      if (!user) {
+        addToast({
+          type: 'error',
+          title: 'Authentication Required',
+          message: 'Please log in to check out.',
         });
+        setIsProcessing(false);
+        return;
       }
+      
+      const url = await createCheckoutSession(user.id, items);
+      window.location.href = url; // Redirect to Stripe Checkout
 
-      if (user) {
-        const newPurchasedIds = [...(user.purchasedAssetIds || [])];
-        items.forEach(item => {
-          if (!newPurchasedIds.includes(item.assetId)) {
-            newPurchasedIds.push(item.assetId);
-          }
-        });
-        await updateProfile({ purchasedAssetIds: newPurchasedIds });
-      }
-
-      clearCart();
-      addToast({
-        type: 'success',
-        title: 'Purchase successful!',
-        message: 'Your assets are ready for download.',
-      });
-      navigate('/orders');
-    } catch {
+    } catch (error) {
+      console.error(error);
       addToast({
         type: 'error',
-        title: 'Purchase failed',
-        message: 'Something went wrong. Please try again.',
+        title: 'Gateway Error',
+        message: 'Failed to securely connect to the payment processor. Please try again later.',
       });
-    } finally {
       setIsProcessing(false);
     }
   };

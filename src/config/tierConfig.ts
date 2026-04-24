@@ -1,22 +1,21 @@
 import type { AIProvider } from '../stores/aiStore';
 
 // ── Membership Tiers ──────────────────────────────────────────────────────────
-export type MembershipTier = 'free' | 'creator' | 'studio' | 'catalyst';
+export type MembershipTier = 'free' | 'spark' | 'emergent' | 'catalyst' | 'nova' | 'catalytic-crew';
 
 export interface TierDefinition {
   id: MembershipTier;
   name: string;
   price: number; // USD/month
-  creditsPerDay: number;
-  builderBotPerMonth: number;
-  builderBotPerDay: number; // Infinity = uncapped
+  creditsPerDay: number;        // Daily credits (API calls)
+  creditsPerMonth: number;      // Monthly credit cap
   canBringOwnKeys: boolean;
-  localAIUnlimited: boolean;
+  localAIUnlimited: boolean;    // Local AI is always free
   webOS: false | 'limited' | true;
-  creditMultiplier: number; // 1.0 = full price, 0.5 = half
   priorityInference: boolean;
   liveSupport: boolean;
   catalystBadge: boolean;
+  exhaustiveResearchPerMonth: number;
   color: string;
   accentColor: string;
 }
@@ -26,105 +25,141 @@ export const TIER_CONFIG: Record<MembershipTier, TierDefinition> = {
     id: 'free',
     name: 'Free',
     price: 0,
-    creditsPerDay: 50,
-    builderBotPerMonth: 20,
-    builderBotPerDay: 5,
+    creditsPerDay: 7,
+    creditsPerMonth: 20,
+    canBringOwnKeys: false,
+    localAIUnlimited: false,
+    webOS: false,
+    priorityInference: false,
+    liveSupport: false,
+    catalystBadge: false,
+    exhaustiveResearchPerMonth: 0,
+    color: 'text-white/80',
+    accentColor: '#e5e7eb',
+  },
+  spark: {
+    id: 'spark',
+    name: 'Spark',
+    price: 9.99,
+    creditsPerDay: 30,
+    creditsPerMonth: 100,
     canBringOwnKeys: false,
     localAIUnlimited: true,
-    webOS: false,
-    creditMultiplier: 1.0,
-    priorityInference: false,
-    liveSupport: false,
-    catalystBadge: false,
-    color: 'text-white/60',
-    accentColor: '#6b7280',
-  },
-  creator: {
-    id: 'creator',
-    name: 'Creator',
-    price: 9,
-    creditsPerDay: 200,
-    builderBotPerMonth: 100,
-    builderBotPerDay: Infinity,
-    canBringOwnKeys: true,
-    localAIUnlimited: true,
     webOS: 'limited',
-    creditMultiplier: 1.0,
     priorityInference: false,
     liveSupport: false,
     catalystBadge: false,
-    color: 'text-neon-cyan',
-    accentColor: '#00F0FF',
+    exhaustiveResearchPerMonth: 0,
+    color: 'text-cyan-400',
+    accentColor: '#22d3ee',
   },
-  studio: {
-    id: 'studio',
-    name: 'Studio',
-    price: 17,
-    creditsPerDay: 600,
-    builderBotPerMonth: 300,
-    builderBotPerDay: Infinity,
-    canBringOwnKeys: true,
+  emergent: {
+    id: 'emergent',
+    name: 'Emergent',
+    price: 17.99,
+    creditsPerDay: 100,
+    creditsPerMonth: 250,
+    canBringOwnKeys: false,
     localAIUnlimited: true,
     webOS: true,
-    creditMultiplier: 1.0,
     priorityInference: false,
     liveSupport: false,
     catalystBadge: false,
-    color: 'text-neon-violet',
-    accentColor: '#8B5CF6',
+    exhaustiveResearchPerMonth: 0,
+    color: 'text-fuchsia-400',
+    accentColor: '#e879f9',
   },
   catalyst: {
     id: 'catalyst',
     name: 'Catalyst',
-    price: 50,
-    creditsPerDay: 3000,
-    builderBotPerMonth: 1500,
-    builderBotPerDay: Infinity,
+    price: 29.99,
+    creditsPerDay: 250,
+    creditsPerMonth: 500,
     canBringOwnKeys: true,
     localAIUnlimited: true,
     webOS: true,
-    creditMultiplier: 0.5,
     priorityInference: true,
     liveSupport: true,
     catalystBadge: true,
-    color: 'text-yellow-400',
-    accentColor: '#FBBF24',
+    exhaustiveResearchPerMonth: 1,
+    color: 'text-amber-400',
+    accentColor: '#fbbf24',
+  },
+  nova: {
+    id: 'nova',
+    name: 'Nova',
+    price: 75.00,
+    creditsPerDay: 500,
+    creditsPerMonth: 750,
+    canBringOwnKeys: true,
+    localAIUnlimited: true,
+    webOS: true,
+    priorityInference: true,
+    liveSupport: true,
+    catalystBadge: true,
+    exhaustiveResearchPerMonth: 2,
+    color: 'text-rose-400',
+    accentColor: '#f43f5e',
+  },
+  'catalytic-crew': {
+    id: 'catalytic-crew',
+    name: 'Catalytic Crew',
+    price: 349.99,
+    creditsPerDay: 1000,
+    creditsPerMonth: 5000,
+    canBringOwnKeys: true,
+    localAIUnlimited: true,
+    webOS: true,
+    priorityInference: true,
+    liveSupport: true,
+    catalystBadge: true,
+    exhaustiveResearchPerMonth: 5,
+    color: 'text-indigo-400',
+    accentColor: '#818cf8',
   },
 };
 
-// ── Base credit costs (before multipliers) ────────────────────────────────────
+// ── Credit Pack Pricing ───────────────────────────────────────────────────────
+// Simple: 1 credit = 1 API call (but BuilderBot uses multiple calls internally)
+export const CREDIT_PACKS = [
+  { credits: 10, price: 5 },
+  { credits: 25, price: 10 },
+  { credits: 60, price: 20 },
+  { credits: 150, price: 50 },
+];
+
+// ── Simple costs: 1 credit = 1 token/API call ─────────────────────────────────
 export const BASE_COSTS = {
-  builderBotRun: 10,
+  // Simple system: each API call costs 1 credit
+  chatMessage: 1,
   imageGen: 3,
   imageEdit: 1,
-  videoGenPer4s: 100,
+  videoGen: 10,
 };
 
-// ── Model credit multipliers ──────────────────────────────────────────────────
-export const MODEL_MULTIPLIER: Partial<Record<AIProvider | string, number>> = {
-  gemini: 1,
-  openai: 2,
-  claude: 3,
-  kimi: 3,
-  ollama: 0,    // local = free
-  lmstudio: 0,  // local = free
-};
-
-/** Compute the actual credit cost for a BuilderBot run */
-export function builderBotCost(
-  provider: AIProvider,
-  tierMultiplier = 1.0
-): number {
-  const modelMult = MODEL_MULTIPLIER[provider] ?? 1;
-  if (modelMult === 0) return 0; // local AI is always free
-  return Math.ceil(BASE_COSTS.builderBotRun * modelMult * tierMultiplier);
+// ── Free AI Providers ─────────────────────────────────────────────────────────
+// Local AI (Ollama, LM Studio) and Gemini are free for conversation
+export function isLocalAI(provider: AIProvider): boolean {
+  return provider === 'ollama' || provider === 'lmstudio' || provider === 'huggingface' || provider === 'gemini';
 }
 
-/** Human-readable tier label for a given provider cost */
+/** Cost label - simple */
+export function costLabel(provider: AIProvider): string {
+  if (isLocalAI(provider)) return 'FREE';
+  return '1 credit/call';
+}
+
+/** Check if provider is free for chat */
+export function isFreeProvider(provider: AIProvider): boolean {
+  return isLocalAI(provider);
+}
+
+// Legacy exports for compatibility
+export function builderBotCost(provider: AIProvider): number {
+  if (isLocalAI(provider)) return 0;
+  return 1; // 1 credit per call
+}
+
 export function providerCostLabel(provider: AIProvider): string {
-  const mult = MODEL_MULTIPLIER[provider];
-  if (mult === 0) return 'FREE (local)';
-  if (mult === 1) return '10 credits';
-  if (mult === 2) return '20 credits';
-  return '30 credits';
+  return costLabel(provider);
 }

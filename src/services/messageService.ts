@@ -1,27 +1,69 @@
 import type { Message, Conversation } from '@/types';
+import { db, isFirebaseConfigured } from '../config/firebase';
+import { collection, addDoc, query, onSnapshot, orderBy, serverTimestamp, doc, setDoc, getDocs } from 'firebase/firestore';
+import { kernelStorage } from '@/kernel/kernelStorage.js';
 
 const STORAGE_KEYS = {
   messages: 'novaura_messages',
   conversations: 'novaura_conversations',
 };
 
-// Initialize storage
+// Internal sync tracker
+let _isListeningToFirebase = false;
+
+// Initialize storage and start Firebase sync
 export const initializeMessageStorage = () => {
-  if (!localStorage.getItem(STORAGE_KEYS.messages)) {
-    localStorage.setItem(STORAGE_KEYS.messages, JSON.stringify([]));
+  if (!kernelStorage.getItem(STORAGE_KEYS.messages)) {
+    kernelStorage.setItem(STORAGE_KEYS.messages, JSON.stringify([]));
   }
-  if (!localStorage.getItem(STORAGE_KEYS.conversations)) {
-    localStorage.setItem(STORAGE_KEYS.conversations, JSON.stringify([]));
+  if (!kernelStorage.getItem(STORAGE_KEYS.conversations)) {
+    kernelStorage.setItem(STORAGE_KEYS.conversations, JSON.stringify([]));
+  }
+
+  // Bind bidirectional Firestore sync if available
+  if (isFirebaseConfigured && !_isListeningToFirebase) {
+    _isListeningToFirebase = true;
+    try {
+      // Sync global chat rooms
+      const rooms = ['ROOM_CREATORS', 'ROOM_DEVS'];
+      rooms.forEach(roomId => {
+        const q = query(collection(db as any, 'social_chat_rooms', roomId, 'messages'), orderBy('createdAt', 'asc'));
+        onSnapshot(q, (snapshot) => {
+          let messages = getAllMessages();
+          let hasChanges = false;
+          snapshot.forEach(docSnap => {
+            const data = docSnap.data();
+            // Map Firestore data to Unified schema
+            if (!messages.find(m => m.id === docSnap.id)) {
+              messages.push({
+                id: docSnap.id,
+                senderId: data.authorId || data.senderId || 'unknown',
+                recipientId: roomId,
+                type: 'text',
+                content: data.text || data.content || '',
+                status: 'sent',
+                createdAt: data.createdAt ? new Date(data.createdAt).toISOString() : new Date().toISOString(),
+              });
+              hasChanges = true;
+            }
+          });
+          if (hasChanges) kernelStorage.setItem(STORAGE_KEYS.messages, JSON.stringify(messages));
+        });
+      });
+      // NOTE: Direct messages require querying across social_dm_threads, which is complex locally. 
+      // For immediate launch, we sync rooms perfectly.
+    } catch (e) {
+      console.warn('Firebase message sync error:', e);
+    }
   }
 };
 
-// Get all messages
+// Get all messages synchronously (UI dependency)
 export const getAllMessages = (): Message[] => {
-  const data = localStorage.getItem(STORAGE_KEYS.messages);
+  const data = kernelStorage.getItem(STORAGE_KEYS.messages);
   return data ? JSON.parse(data) : [];
 };
 
-// Get messages between two users
 export const getMessagesBetween = (userId1: string, userId2: string): Message[] => {
   const messages = getAllMessages();
   return messages.filter(
@@ -31,7 +73,6 @@ export const getMessagesBetween = (userId1: string, userId2: string): Message[] 
   ).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 };
 
-// Get conversations for a user
 export const getUserConversations = (userId: string): Conversation[] => {
   const messages = getAllMessages();
   const conversations: Map<string, Conversation> = new Map();
@@ -43,7 +84,7 @@ export const getUserConversations = (userId: string): Conversation[] => {
       if (!conversations.has(otherUserId)) {
         conversations.set(otherUserId, {
           id: `conv_${userId}_${otherUserId}`,
-          participants: [], // Will be populated when fetching
+          participants: [],
           lastMessage: message,
           unreadCount: message.recipientId === userId && message.status !== 'read' ? 1 : 0,
           updatedAt: message.createdAt,
@@ -66,7 +107,7 @@ export const getUserConversations = (userId: string): Conversation[] => {
   );
 };
 
-// Send a message
+// Push message to Firebase & Local Storage
 export const sendMessage = (
   senderId: string,
   recipientId: string,
@@ -88,12 +129,33 @@ export const sendMessage = (
   };
 
   messages.push(newMessage);
-  localStorage.setItem(STORAGE_KEYS.messages, JSON.stringify(messages));
+  kernelStorage.setItem(STORAGE_KEYS.messages, JSON.stringify(messages));
+
+  // Push to Firebase for sync with WebOS
+  if (isFirebaseConfigured) {
+    try {
+      const threadId = [senderId, recipientId].sort().join('_');
+      addDoc(collection(db as any, 'social_dm_threads', threadId, 'messages'), {
+        senderId,
+        content,
+        text: content, // WebOS uses 'text' field
+        type,
+        read: false,
+        createdAt: Date.now()
+      });
+      setDoc(doc(db as any, 'social_dm_threads', threadId), {
+        participants: [senderId, recipientId],
+        lastMessage: content,
+        lastAt: serverTimestamp()
+      }, { merge: true });
+    } catch (e) {
+      console.warn('Failed to push DM to Firebase', e);
+    }
+  }
 
   return newMessage;
 };
 
-// Mark messages as read
 export const markMessagesAsRead = (userId: string, senderId: string): void => {
   const messages = getAllMessages();
   let updated = false;
@@ -107,36 +169,29 @@ export const markMessagesAsRead = (userId: string, senderId: string): void => {
   });
 
   if (updated) {
-    localStorage.setItem(STORAGE_KEYS.messages, JSON.stringify(messages));
+    kernelStorage.setItem(STORAGE_KEYS.messages, JSON.stringify(messages));
   }
 };
 
-// Get unread count for a user
 export const getUnreadCount = (userId: string): number => {
   const messages = getAllMessages();
   return messages.filter((m) => m.recipientId === userId && m.status !== 'read').length;
 };
 
-// Send system message to all users
 export const sendSystemMessageToAll = async (content: string): Promise<void> => {
-  const { getAllUsers } = await import('./userStorage');
-  const users = getAllUsers();
-  
-  users.forEach((user: { id: string }) => {
-    sendMessage('system', user.id, content, 'system');
+  if (!db) return;
+  const usersSnapshot = await getDocs(collection(db, 'users'));
+  usersSnapshot.docs.forEach((userDoc) => {
+    sendMessage('system', userDoc.id, content, 'system');
   });
 };
 
-// Send system message to specific user
 export const sendSystemMessage = (recipientId: string, content: string): Message => {
   return sendMessage('system', recipientId, content, 'system');
 };
 
-// Add owner as contact for new user
 export const addOwnerAsContact = (newUserId: string): void => {
-  const OWNER_ID = 'owner_dillan'; // This would be the actual owner user ID
-  
-  // Send welcome message from owner
+  const OWNER_ID = 'owner_dillan';
   sendMessage(
     OWNER_ID,
     newUserId,
@@ -145,7 +200,7 @@ export const addOwnerAsContact = (newUserId: string): void => {
   );
 };
 
-// Send a message to a room (Group Chat)
+// Send Room Message syncing to Firebase & Local Storage
 export const sendRoomMessage = (
   senderId: string,
   roomId: string,
@@ -156,7 +211,7 @@ export const sendRoomMessage = (
   const newMessage: Message = {
     id: `msg_room_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     senderId,
-    recipientId: roomId, // Use roomId as recipientId for rooms
+    recipientId: roomId,
     type: 'text',
     content,
     status: 'sent',
@@ -164,12 +219,25 @@ export const sendRoomMessage = (
   };
 
   messages.push(newMessage);
-  localStorage.setItem(STORAGE_KEYS.messages, JSON.stringify(messages));
+  kernelStorage.setItem(STORAGE_KEYS.messages, JSON.stringify(messages));
+
+  // Push to Firebase for cross-platform sync
+  if (isFirebaseConfigured) {
+    try {
+      addDoc(collection(db as any, 'social_chat_rooms', roomId, 'messages'), {
+        authorId: senderId,
+        text: content, // WebOS expects 'text'
+        content: content,
+        createdAt: Date.now()
+      });
+    } catch (e) {
+      console.warn('Failed to push room message to Firebase', e);
+    }
+  }
 
   return newMessage;
 };
 
-// Get messages for a specific room
 export const getRoomMessages = (roomId: string): Message[] => {
   const messages = getAllMessages();
   return messages.filter(
@@ -177,9 +245,8 @@ export const getRoomMessages = (roomId: string): Message[] => {
   ).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 };
 
-// Delete a message
 export const deleteMessage = (messageId: string): void => {
   const messages = getAllMessages();
   const filtered = messages.filter((m) => m.id !== messageId);
-  localStorage.setItem(STORAGE_KEYS.messages, JSON.stringify(filtered));
+  kernelStorage.setItem(STORAGE_KEYS.messages, JSON.stringify(filtered));
 };

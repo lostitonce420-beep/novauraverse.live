@@ -13,12 +13,25 @@ import {
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { 
-  getAllUsers, 
-  updateUserRole, 
-  deleteUser,
-  initializeUserStorage 
-} from '@/services/userStorage';
+import { db } from '@/config/firebase';
+import { collection, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+
+// Firestore-based admin functions
+const getAllUsers = async () => {
+  if (!db) return [];
+  const snapshot = await getDocs(collection(db, 'users'));
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+const updateUserRole = async (userId: string, role: string) => {
+  if (!db) return;
+  await updateDoc(doc(db, 'users', userId), { role });
+};
+
+const deleteUser = async (userId: string) => {
+  if (!db) return;
+  await deleteDoc(doc(db, 'users', userId));
+};
 import { useUIStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
 import type { User } from '@/types';
@@ -44,12 +57,12 @@ export default function AdminUsers() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
 
   // Define loadUsers with useCallback BEFORE useEffect hooks that use it
-  const loadUsers = useCallback(() => {
-    setUsers(getAllUsers());
+  const loadUsers = useCallback(async () => {
+    const allUsers = await getAllUsers();
+    setUsers(allUsers);
   }, []);
 
   useEffect(() => {
-    initializeUserStorage();
     loadUsers();
   }, [loadUsers]);
 

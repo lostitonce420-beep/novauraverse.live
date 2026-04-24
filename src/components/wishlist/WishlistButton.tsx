@@ -86,7 +86,7 @@ export const WishlistButton: React.FC<WishlistButtonProps> = ({
 
     // If just showing count (navbar mode), navigate to wishlist
     if (showCount) {
-      window.location.href = '/wishlist';
+      window.location.href = `${import.meta.env.BASE_URL}wishlist`;
       return;
     }
 

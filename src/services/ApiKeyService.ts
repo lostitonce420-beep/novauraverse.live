@@ -1,3 +1,4 @@
+import { kernelStorage } from '@/kernel/kernelStorage.js';
 
 export interface ApiKey {
   id: string;
@@ -17,7 +18,7 @@ class ApiKeyService {
   }
 
   getKeys(userId: string): ApiKey[] {
-    const data = localStorage.getItem(this.getStorageKey(userId));
+    const data = kernelStorage.getItem(this.getStorageKey(userId));
     return data ? JSON.parse(data) : [];
   }
 
@@ -38,7 +39,7 @@ class ApiKeyService {
     };
 
     keys.push(newKey);
-    localStorage.setItem(this.getStorageKey(userId), JSON.stringify(keys));
+    kernelStorage.setItem(this.getStorageKey(userId), JSON.stringify(keys));
     return newKey;
   }
 
@@ -48,13 +49,13 @@ class ApiKeyService {
     if (index === -1) return false;
 
     keys[index].endpoint = endpoint;
-    localStorage.setItem(this.getStorageKey(userId), JSON.stringify(keys));
+    kernelStorage.setItem(this.getStorageKey(userId), JSON.stringify(keys));
     return true;
   }
 
   deleteKey(userId: string, keyId: string): void {
     const keys = this.getKeys(userId).filter(k => k.id !== keyId);
-    localStorage.setItem(this.getStorageKey(userId), JSON.stringify(keys));
+    kernelStorage.setItem(this.getStorageKey(userId), JSON.stringify(keys));
   }
 
   validateKey(keyString: string): ApiKey | null {
@@ -63,7 +64,7 @@ class ApiKeyService {
     for (let i = 0; i < localStorage.length; i++) {
         const storageKey = localStorage.key(i);
         if (storageKey?.startsWith(this.STORAGE_KEY)) {
-            const keys: ApiKey[] = JSON.parse(localStorage.getItem(storageKey) || '[]');
+            const keys: ApiKey[] = JSON.parse(kernelStorage.getItem(storageKey) || '[]');
             const found = keys.find(k => k.key === keyString);
             if (found) return found;
         }

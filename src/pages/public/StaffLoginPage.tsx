@@ -5,28 +5,22 @@ import { Shield, Eye, EyeOff, ChevronRight, Lock } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useUIStore } from '@/stores/uiStore';
 import { apiClient } from '@/services/apiClient';
+import { kernelStorage } from '@/kernel/kernelStorage.js';
+import { auth, googleProvider } from '../../../src/config/firebase';
+import { signInWithPopup } from 'firebase/auth';
 
-const GATE_CODE = '<catalyst>';
 const ONBOARDING_KEY = 'novaura_staff_onboarding';
 
 const STAFF_TITLES = [
-  'Founder / Owner',
-  'Co-Founder',
-  'Chief Operating Officer',
-  'General Manager',
-  'Platform Director',
-  'Community Manager',
-  'Head of Moderation',
-  'Moderator',
-  'Support Specialist',
-  'Content Reviewer',
+  'Catalyst (Owner)',
+  'AI Orchestrator',
   'Developer',
-  'Marketing Lead',
-  'Partnerships Manager',
-  'Legal & Compliance',
-  'Finance Officer',
-  'Brand Ambassador',
-  'Guest Staff',
+  'Motion Picture Director',
+  'Graphics Designer',
+  'Audio Technician',
+  'Researcher',
+  'Marketeer',
+  'Testers',
 ];
 
 export default function StaffLoginPage() {
@@ -34,12 +28,8 @@ export default function StaffLoginPage() {
   const { setUser } = useAuthStore();
   const { addToast } = useUIStore();
 
-  const [step, setStep] = useState<1 | 2 | 'login'>(1);
-  const [isReturning, setIsReturning] = useState(false);
-  const [code, setCode] = useState('');
-  const [codeError, setCodeError] = useState('');
-  const [showCode, setShowCode] = useState(false);
-
+  const [step, setStep] = useState<1 | 2>(1);
+  const [avatarUrl, setAvatarUrl] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName]   = useState('');
   const [email, setEmail]         = useState('');
@@ -50,15 +40,33 @@ export default function StaffLoginPage() {
   const [loading, setLoading]     = useState(false);
 
   // Check if onboarding is enabled
-  const onboardingEnabled = localStorage.getItem(ONBOARDING_KEY) !== 'false';
+  const onboardingEnabled = kernelStorage.getItem(ONBOARDING_KEY) !== 'false';
 
-  const handleCodeSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (code.trim() === GATE_CODE) {
+  const handleGoogleAuth = async () => {
+    setLoading(true);
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
+      
+      // Auto-fill from Google
+      const [first, ...last] = (user.displayName || '').split(' ');
+      setFirstName(first || '');
+      setLastName(last.join(' ') || '');
+      setEmail(user.email || '');
+      setAvatarUrl(user.photoURL || '');
+      
+      // Suggest a username if not set
+      if (!username) {
+        setUsername(user.email?.split('@')[0] || '');
+      }
+
+      toast.success('Identity verified via Google');
       setStep(2);
-      setCodeError('');
-    } else {
-      setCodeError('Invalid access code.');
+    } catch (err: any) {
+      console.error('Staff Auth Error:', err);
+      toast.error('Google Authentication failed');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -66,10 +74,6 @@ export default function StaffLoginPage() {
     e.preventDefault();
     if (!firstName || !lastName || !email || !password || !title) {
       addToast({ type: 'error', title: 'Missing fields', message: 'All fields are required.' });
-      return;
-    }
-    if (password.length < 8) {
-      addToast({ type: 'error', title: 'Weak password', message: 'Minimum 8 characters.' });
       return;
     }
 
@@ -81,6 +85,7 @@ export default function StaffLoginPage() {
         firstName,
         lastName,
         title,
+        avatar: avatarUrl,
         isNewRegistration: true,
       });
       apiClient.setToken(token);
@@ -89,30 +94,6 @@ export default function StaffLoginPage() {
       navigate('/admin/command-center');
     } catch (err: any) {
       addToast({ type: 'error', title: 'Registration failed', message: err.message });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email || !password) {
-      addToast({ type: 'error', title: 'Missing fields', message: 'Email and password required.' });
-      return;
-    }
-    setLoading(true);
-    try {
-      const { token, user } = await apiClient.post<{ token: string; user: any }>('/auth/staff-login', {
-        email: email.trim(),
-        password,
-        isNewRegistration: false,
-      });
-      apiClient.setToken(token);
-      setUser(user);
-      addToast({ type: 'success', title: `Welcome back!`, message: `Logged in as ${user.username}.` });
-      navigate('/admin/command-center');
-    } catch (err: any) {
-      addToast({ type: 'error', title: 'Login failed', message: err.message });
     } finally {
       setLoading(false);
     }
@@ -160,53 +141,53 @@ export default function StaffLoginPage() {
             {[1, 2].map(n => (
               <div key={n} className="flex items-center gap-3">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-all ${
-                  step >= n
+                  (step === 'login' ? 3 : step) >= n
                     ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
                     : 'border-white/10 text-text-muted'
                 }`}>
                   {n}
                 </div>
-                {n === 1 && <div className={`w-12 h-0.5 ${step >= 2 ? 'bg-neon-cyan' : 'bg-white/10'}`} />}
+                {n === 1 && <div className={`w-12 h-0.5 ${(step === 'login' ? 3 : step) >= 2 ? 'bg-neon-cyan' : 'bg-white/10'}`} />}
               </div>
             ))}
           </div>
 
           <AnimatePresence mode="wait">
-            {/* ── Step 1: Access Code ── */}
+            {/* ── Step 1: Identity Verification ── */}
             {step === 1 && (
-              <motion.form
+              <motion.div
                 key="step1"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                onSubmit={handleCodeSubmit}
-                className="space-y-5"
+                className="space-y-6"
               >
-                <div>
-                  <label className="block text-sm text-text-muted mb-2">Access Code</label>
-                  <div className="relative">
-                    <input
-                      type={showCode ? 'text' : 'password'}
-                      value={code}
-                      onChange={e => { setCode(e.target.value); setCodeError(''); }}
-                      placeholder="Enter your access code"
-                      autoFocus
-                      className="w-full bg-void border border-white/10 rounded-lg px-4 py-3 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-neon-cyan/40 pr-10"
-                    />
-                    <button type="button" onClick={() => setShowCode(!showCode)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary">
-                      {showCode ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                  {codeError && <p className="text-red-400 text-xs mt-1">{codeError}</p>}
-                  <p className="text-text-muted text-xs mt-1">Provided by the platform owner</p>
+                <div className="text-center">
+                  <p className="text-text-secondary text-sm mb-6">
+                    Sign in with your Google account to verify your identity before joining the NovAura staff.
+                  </p>
                 </div>
 
-                <button type="submit"
-                        className="w-full bg-gradient-rgb text-void font-bold py-3 rounded-lg flex items-center justify-center gap-2">
-                  Continue <ChevronRight size={16} />
+                <button
+                  type="button"
+                  onClick={handleGoogleAuth}
+                  disabled={loading}
+                  className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-white text-void font-bold rounded-xl hover:bg-white/90 transition-all active:scale-95 disabled:opacity-50"
+                >
+                  {loading ? (
+                    <div className="w-5 h-5 border-2 border-void/30 border-t-void rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5" />
+                      Continue with Google
+                    </>
+                  )}
                 </button>
-              </motion.form>
+
+                <p className="text-center text-[10px] text-text-muted uppercase tracking-widest">
+                  Secure Identity verification required
+                </p>
+              </motion.div>
             )}
 
             {/* ── Step 2: Staff Registration ── */}

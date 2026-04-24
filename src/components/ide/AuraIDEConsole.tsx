@@ -17,7 +17,7 @@ import { useAIStore } from '../../stores/aiStore';
 import { useIDEStore } from '../../stores/ideStore';
 import { aiOrchestrator } from '../../services/aiOrchestrator';
 import { runPipeline } from '../../services/builderBotService';
-import { checkAndSpendBuilderBot, getCreditSnapshot } from '../../services/creditService';
+import { checkAndSpendBuilderBot, getCreditSnapshot, getCreditSnapshotSync } from '../../services/creditService';
 import { builderBotCost, providerCostLabel } from '../../config/tierConfig';
 import type { MembershipTier } from '../../config/tierConfig';
 import { useNavigate } from 'react-router-dom';
@@ -25,16 +25,25 @@ import { useAuthStore } from '../../stores/authStore';
 import CreditHUD from '../ui/CreditHUD';
 
 const ALL_PROVIDERS = [
-  { id: 'gemini',   label: 'Gemini',    minTier: 'free'    as MembershipTier },
-  { id: 'claude',   label: 'Claude',    minTier: 'creator' as MembershipTier },
-  { id: 'openai',   label: 'OpenAI',    minTier: 'free'    as MembershipTier },
-  { id: 'kimi',     label: 'Kimi',      minTier: 'creator' as MembershipTier },
-  { id: 'vertex',   label: 'Vertex AI', minTier: 'free'    as MembershipTier },
-  { id: 'ollama',   label: 'Ollama',    minTier: 'free'    as MembershipTier },
-  { id: 'lmstudio', label: 'LM Studio', minTier: 'free'    as MembershipTier },
+  { id: 'gemini',        label: 'Gemini',       minTier: 'free'  as MembershipTier },
+  // Claude/OpenAI require upfront payment - hide for now
+  // { id: 'claude',        label: 'Claude',       minTier: 'spark' as MembershipTier },
+  // { id: 'openai',        label: 'OpenAI',       minTier: 'free'  as MembershipTier },
+  { id: 'kimi',          label: 'Kimi',         minTier: 'spark' as MembershipTier },
+  { id: 'vertex',        label: 'Vertex AI',    minTier: 'free'  as MembershipTier },
+  { id: 'huggingface',   label: 'Hugging Face', minTier: 'free'  as MembershipTier },
+  { id: 'ollama',        label: 'Ollama',       minTier: 'free'  as MembershipTier },
+  { id: 'lmstudio',      label: 'LM Studio',    minTier: 'free'  as MembershipTier },
 ];
 
-const TIER_RANK: Record<MembershipTier, number> = { free: 0, creator: 1, studio: 2, catalyst: 3 };
+const TIER_RANK: Record<MembershipTier, number> = { 
+  free: 0, 
+  spark: 1, 
+  emergent: 2, 
+  catalyst: 3,
+  nova: 4,
+  'catalytic-crew': 5
+};
 
 const AuraIDEConsole: React.FC = () => {
   const {
@@ -45,6 +54,7 @@ const AuraIDEConsole: React.FC = () => {
     openaiKey,
     kimiKey,
     vertexKey,
+    huggingfaceKey,
     messages,
     addMessage,
     isThinking,
@@ -69,6 +79,8 @@ const AuraIDEConsole: React.FC = () => {
 
   const [prompt, setPrompt] = useState('');
   const [showSettings, setShowSettings] = useState(false);
+  const [snapshot, setSnapshot] = useState<any>(null);
+  const [isLoadingCredits, setIsLoadingCredits] = useState(false);
   const chatRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef(false);
 
@@ -76,17 +88,43 @@ const AuraIDEConsole: React.FC = () => {
 
   // Own-key free inference unlocks at Studio ($17) and above
   const userHasOwnKey = (() => {
-    if (TIER_RANK[userTier] < TIER_RANK['studio']) return false;
+    if (TIER_RANK[userTier] < TIER_RANK['emergent']) return false;
     if (provider === 'gemini') return geminiKey.trim().length > 0;
     if (provider === 'claude') return claudeKey.trim().length > 0;
     if (provider === 'openai') return openaiKey.trim().length > 0;
     if (provider === 'kimi')   return kimiKey.trim().length > 0;
     if (provider === 'vertex') return vertexKey.trim().length > 0;
-    return false; // ollama / lmstudio handled by cost===0
+    if (provider === 'huggingface') return huggingfaceKey.trim().length > 0;
+    return false; // ollama / lmstudio / huggingface free tier handled by cost===0
   })();
   const visibleProviders = ALL_PROVIDERS.filter(p => TIER_RANK[p.minTier] <= TIER_RANK[userTier]);
   const creditCost = builderBotCost(provider, userTier === 'catalyst' ? 0.5 : 1.0);
-  const snapshot = user ? getCreditSnapshot(user.id, userTier) : null;
+  
+  // Load credit snapshot from database
+  useEffect(() => {
+    if (!user) {
+      setSnapshot(null);
+      return;
+    }
+    
+    let cancelled = false;
+    setIsLoadingCredits(true);
+    
+    getCreditSnapshot(user.id, userTier)
+      .then(data => {
+        if (!cancelled) setSnapshot(data);
+      })
+      .catch(err => {
+        console.error('Failed to load credits:', err);
+        // Fallback to sync version
+        if (!cancelled) setSnapshot(getCreditSnapshotSync(user.id, userTier));
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingCredits(false);
+      });
+    
+    return () => { cancelled = true; };
+  }, [user, userTier]);
 
   // If current provider is no longer accessible for this tier, reset to gemini
   useEffect(() => {
@@ -136,7 +174,7 @@ const AuraIDEConsole: React.FC = () => {
 
     // Credit gate — local AI (cost=0) and own-key users are always free
     if (user && creditCost > 0 && !userHasOwnKey) {
-      const check = checkAndSpendBuilderBot(user.id, userTier, provider, false);
+      const check = await checkAndSpendBuilderBot(user.id, userTier, provider, false);
       if (!check.allowed) {
         addMessage({
           role: 'assistant',
@@ -145,7 +183,11 @@ const AuraIDEConsole: React.FC = () => {
         return;
       }
       // Deduct credits
-      checkAndSpendBuilderBot(user.id, userTier, provider, true);
+      await checkAndSpendBuilderBot(user.id, userTier, provider, true);
+      
+      // Refresh credit snapshot after spending
+      const newSnapshot = await getCreditSnapshot(user.id, userTier);
+      setSnapshot(newSnapshot);
     }
 
     const buildPrompt = prompt.trim();
@@ -167,7 +209,7 @@ const AuraIDEConsole: React.FC = () => {
       addTerminalLine({ type, text });
     };
 
-    const isStudioPlus = TIER_RANK[userTier] >= TIER_RANK['studio'];
+    const isStudioPlus = TIER_RANK[userTier] >= TIER_RANK['emergent'];
 
     try {
       const result = await runPipeline(buildPrompt, editorCode, onLog, {
@@ -212,7 +254,7 @@ const AuraIDEConsole: React.FC = () => {
                 iter {pipelineIteration}
               </Badge>
             )}
-            {isRunning && TIER_RANK[userTier] >= TIER_RANK['studio'] && (
+            {isRunning && TIER_RANK[userTier] >= TIER_RANK['emergent'] && (
               <Badge variant="outline" className="text-[9px] border-neon-violet/40 text-neon-violet px-1.5 h-4 uppercase animate-pulse">
                 kimi sweep
               </Badge>
@@ -357,7 +399,7 @@ const AuraIDEConsole: React.FC = () => {
                     </button>
                   </>}
             </p>
-            {TIER_RANK[userTier] >= TIER_RANK['studio'] ? (
+            {TIER_RANK[userTier] >= TIER_RANK['emergent'] ? (
               <p className="text-[9px] text-neon-violet/80 font-mono">
                 ✦ Kimi creative sweep enabled — gaps filled, logic sound, visuals elevated
               </p>

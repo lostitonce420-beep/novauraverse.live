@@ -1,3 +1,4 @@
+import { kernelStorage } from '@/kernel/kernelStorage.js';
 /**
  * usageService.ts
  * Manages daily usage limits for AI interactions to prevent abuse while allowing free standard chat.
@@ -12,7 +13,7 @@ interface UsageRecord {
 }
 
 const getUsage = (): UsageRecord => {
-  const data = localStorage.getItem(STORAGE_KEY);
+  const data = kernelStorage.getItem(STORAGE_KEY);
   if (!data) return { count: 0, lastReset: new Date().toISOString() };
   
   const record: UsageRecord = JSON.parse(data);
@@ -31,7 +32,7 @@ const getUsage = (): UsageRecord => {
 };
 
 const saveUsage = (record: UsageRecord) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(record));
+  kernelStorage.setItem(STORAGE_KEY, JSON.stringify(record));
 };
 
 export const usageService = {

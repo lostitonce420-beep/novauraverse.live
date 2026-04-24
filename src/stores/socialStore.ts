@@ -61,29 +61,31 @@ export const useSocialStore = create<SocialState>()(
       threads: [],
       jobs: [],
 
-      refreshFeed: () => {
-        set({ globalFeed: getGlobalFeed() });
+      refreshFeed: async () => {
+        const feed = await getGlobalFeed();
+        set({ globalFeed: feed });
       },
 
-      createPost: (userId: string, content: string, mediaUrls = [], tags = []) => {
-        serviceCreatePost(userId, content, mediaUrls, tags);
-        get().refreshFeed();
+      createPost: async (userId: string, content: string, mediaUrls = [], tags = []) => {
+        await serviceCreatePost(userId, content, mediaUrls, tags);
+        await get().refreshFeed();
       },
 
-      likePost: (postId: string, userId: string) => {
-        toggleLike(postId, userId);
-        get().refreshFeed();
+      likePost: async (postId: string, userId: string) => {
+        await toggleLike(postId, userId);
+        await get().refreshFeed();
       },
 
-      addComment: (postId: string, authorId: string, content: string) => {
-        addPostComment(postId, authorId, content);
-        get().refreshFeed();
+      addComment: async (postId: string, authorId: string, content: string) => {
+        await addPostComment(postId, authorId, content);
+        await get().refreshFeed();
       },
 
-      refreshCommunity: () => {
+      refreshCommunity: async () => {
+        const [threads, jobs] = await Promise.all([getThreads(), getJobs()]);
         set({ 
-          threads: getThreads(),
-          jobs: getJobs()
+          threads,
+          jobs
         });
       },
 

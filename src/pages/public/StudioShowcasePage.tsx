@@ -550,10 +550,10 @@ export default function StudioShowcasePage() {
                     </span>
                   ))}
                 </div>
-                <a href="#" className="inline-flex items-center gap-2 text-neon-cyan hover:underline">
+                <span className="inline-flex items-center gap-2 text-neon-cyan/80">
                   <Play className="w-4 h-4" />
                   Coming Soon
-                </a>
+                </span>
               </motion.div>
 
               <motion.div

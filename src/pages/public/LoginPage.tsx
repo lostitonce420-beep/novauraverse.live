@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuthStore } from '@/stores/authStore';
 import { useUIStore } from '@/stores/uiStore';
-import { hasAdmin, initializeUserStorage } from '@/services/userStorage';
+
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -19,11 +19,8 @@ export default function LoginPage() {
   const [needsSetup, setNeedsSetup] = useState(false);
 
   useEffect(() => {
-    initializeUserStorage();
-    // Check if admin setup is needed
-    if (!hasAdmin()) {
-      setNeedsSetup(true);
-    }
+    // Auth is handled by Firebase
+    clearError();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -212,7 +209,7 @@ export default function LoginPage() {
                 <input type="checkbox" className="custom-checkbox" />
                 <span className="text-sm text-text-secondary">Remember me</span>
               </label>
-              <Link to="#" className="text-sm text-neon-cyan hover:text-neon-cyan/80">
+              <Link to="/help" className="text-sm text-neon-cyan hover:text-neon-cyan/80">
                 Forgot password?
               </Link>
             </div>

@@ -25,7 +25,8 @@ import {
   getRoomMessages,
   sendRoomMessage
 } from '@/services/messageService';
-import { getUserById } from '@/services/userStorage';
+import { db } from '@/config/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 import type { Message } from '@/types';
 
 const CHANNELS = [
@@ -47,18 +48,20 @@ export default function MessagesPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Define load functions with useCallback BEFORE useEffect hooks that use them
-  const loadConversations = useCallback(() => {
+  const loadConversations = useCallback(async () => {
     if (!currentUser) return;
     const convs = getUserConversations(currentUser.id);
     
     // Enrich with user data
-    const enrichedConvs = convs.map((conv) => {
+    const enrichedConvsPromises = convs.map(async (conv) => {
       const otherUserId = conv.lastMessage?.senderId === currentUser.id 
         ? conv.lastMessage?.recipientId 
         : conv.lastMessage?.senderId;
-      const otherUser = getUserById(otherUserId || '');
+      const otherUserDoc = await getDoc(doc(db, 'users', otherUserId || ''));
+      const otherUser = otherUserDoc.exists() ? { id: otherUserDoc.id, ...otherUserDoc.data() } : null;
       return { ...conv, otherUser };
-    }).filter((conv) => conv.otherUser);
+    });
+    const enrichedConvs = (await Promise.all(enrichedConvsPromises)).filter((conv) => conv.otherUser);
 
     setConversations(enrichedConvs);
   }, [currentUser]);
@@ -83,23 +86,27 @@ export default function MessagesPage() {
     setUnreadCount(getUnreadCount(currentUser.id));
 
     // If conversationUserId is provided, load that conversation
-    if (conversationUserId) {
-      if (conversationUserId.startsWith('ROOM_')) {
-        const room = CHANNELS.find(c => c.id === conversationUserId);
-        if (room) {
-          setActiveRoomId(room.id);
-          setActiveConversation(null);
-          setMessages(getRoomMessages(room.id));
-        }
-      } else {
-        const otherUser = getUserById(conversationUserId);
-        if (otherUser) {
-          setActiveRoomId(null);
-          setActiveConversation(otherUser);
-          loadMessages(otherUser.id);
+    const loadConversation = async () => {
+      if (conversationUserId) {
+        if (conversationUserId.startsWith('ROOM_')) {
+          const room = CHANNELS.find(c => c.id === conversationUserId);
+          if (room) {
+            setActiveRoomId(room.id);
+            setActiveConversation(null);
+            setMessages(getRoomMessages(room.id));
+          }
+        } else {
+          const otherUserDoc = await getDoc(doc(db, 'users', conversationUserId));
+          const otherUser = otherUserDoc.exists() ? { id: otherUserDoc.id, ...otherUserDoc.data() } : null;
+          if (otherUser) {
+            setActiveRoomId(null);
+            setActiveConversation(otherUser);
+            loadMessages(otherUser.id);
+          }
         }
       }
-    }
+    };
+    loadConversation();
   }, [currentUser, conversationUserId, loadConversations, loadMessages]);
 
   // Auto-scroll to bottom of messages

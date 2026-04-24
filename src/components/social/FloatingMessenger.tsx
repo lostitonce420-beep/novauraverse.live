@@ -21,7 +21,23 @@ import {
   sendMessage
 } from '@/services/messageService';
 import { UserBadge } from '../ui/UserBadge';
-import { getUserById } from '@/services/userStorage';
+import { db } from '@/config/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+
+// Helper to fetch user from Firestore
+const getUserById = async (userId: string) => {
+  if (!db || !userId) return null;
+  try {
+    const docRef = doc(db, 'users', userId);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return { id: docSnap.id, ...docSnap.data() };
+    }
+  } catch (e) {
+    console.error('Error fetching user:', e);
+  }
+  return null;
+};
 
 const CHANNELS = [
   { id: 'ROOM_CREATORS', name: 'Creators Hub', role: 'creator', description: 'Exclusive space for creative pros', icon: Sparkles, color: 'text-neon-magenta' },
